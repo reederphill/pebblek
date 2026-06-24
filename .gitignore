@@ -8,3 +8,5 @@ node_modules/
 # Pebble / editor cruft
 .pebble-cache/
 .DS_Store
+
+.lock-waf_darwin_build
