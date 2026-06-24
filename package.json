@@ -1,0 +1,40 @@
+{
+  "name": "pebblek",
+  "author": "iuri aranda <iuri.aranda@gmail.com>",
+  "version": "0.1.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "pebble": {
+    "displayName": "pebblek",
+    "uuid": "c380dc5d-2c4b-4211-a7b8-67fea3d4586a",
+    "projectType": "moddable",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "HEADING",
+      "AUTOPILOT_STATE",
+      "SOG",
+      "WIND_SPEED",
+      "WIND_ANGLE",
+      "CONNECTION_STATUS",
+      "CMD_ADJUST_HEADING",
+      "CMD_TOGGLE_ENGAGE",
+      "CMD_RESULT"
+    ],
+    "resources": {
+      "media": []
+    }
+  },
+  "dependencies": {
+    "@rebble/clay": "^1.0.10"
+  }
+}
