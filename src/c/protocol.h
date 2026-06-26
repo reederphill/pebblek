@@ -23,23 +23,23 @@
 #define SPEED_SCALE 10  // telemetry speeds are sent in tenths of a knot
 
 typedef enum {
-  AP_STATE_STANDBY = 0,
-  AP_STATE_AUTO = 1,
-  AP_STATE_WIND = 2,
-  AP_STATE_ROUTE = 3,
-  AP_STATE_UNKNOWN = 255,
+    AP_STATE_STANDBY = 0,
+    AP_STATE_AUTO = 1,
+    AP_STATE_WIND = 2,
+    AP_STATE_ROUTE = 3,
+    AP_STATE_UNKNOWN = 255,
 } ApState;
 
 typedef enum {
-  CONN_NO_CONFIG = 0,
-  CONN_DISCONNECTED = 1,
-  CONN_CONNECTING = 2,
-  CONN_CONNECTED = 3,
-  CONN_AWAITING_APPROVAL = 4,
-  CONN_ACCESS_DENIED = 5,
+    CONN_NO_CONFIG = 0,
+    CONN_DISCONNECTED = 1,
+    CONN_CONNECTING = 2,
+    CONN_CONNECTED = 3,
+    CONN_AWAITING_APPROVAL = 4,
+    CONN_ACCESS_DENIED = 5,
 } ConnStatus;
 
 typedef enum {
-  CMD_RESULT_OK = 0,
-  CMD_RESULT_FAILED = 1,
+    CMD_RESULT_OK = 0,
+    CMD_RESULT_FAILED = 1,
 } CmdResult;
