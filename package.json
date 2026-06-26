@@ -9,7 +9,7 @@
   "pebble": {
     "displayName": "pebblek",
     "uuid": "c380dc5d-2c4b-4211-a7b8-67fea3d4586a",
-    "projectType": "moddable",
+    "projectType": "native",
     "sdkVersion": "3",
     "enableMultiJS": true,
     "targetPlatforms": [

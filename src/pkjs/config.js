@@ -1,9 +1,10 @@
 /*
  * Clay configuration for the phone-side settings page.
  *
- * Token-based auth only: the user provides the SignalK server address and a
- * SignalK access token. These stay on the phone (used by src/pkjs to reach the
- * server) and are not sent to the watch.
+ * Auth is via the SignalK "access request" flow, so the user only provides the
+ * server address (and an optional device description shown to the admin during
+ * approval). The app requests a token automatically and the server admin
+ * approves it — the user never pastes a token.
  *
  * The `messageKey` values here are Clay form-field identifiers used as the keys
  * of the persisted settings object — they are intentionally NOT Pebble
@@ -18,8 +19,8 @@ module.exports = [
   {
     type: "text",
     defaultValue:
-      "Connect to your boat's SignalK server. Generate an access token in the " +
-      "SignalK admin UI (Security &rarr; Access Requests / Devices) and paste it below.",
+      "Enter your boat's SignalK server address, then approve the access " +
+      "request in the SignalK admin UI (Security &rarr; Access Requests).",
   },
   {
     type: "section",
@@ -43,15 +44,12 @@ module.exports = [
       },
       {
         type: "input",
-        messageKey: "token",
-        label: "Access token",
-        description: "SignalK access token (used as a Bearer token)",
+        messageKey: "description",
+        label: "Device name",
+        description: "Shown on the server when approving access",
         attributes: {
-          placeholder: "paste token",
-          limit: 1000,
-          autocapitalize: "off",
-          autocorrect: "off",
-          spellcheck: "false",
+          placeholder: "Pebble pebblek",
+          limit: 60,
         },
       },
     ],

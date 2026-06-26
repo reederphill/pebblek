@@ -1,14 +1,13 @@
 /*
- * pebblek watch <-> phone AppMessage protocol — the single source of truth for
- * the message contract between the phone (src/pkjs, PebbleKit JS) and the watch
- * (src/embeddedjs, Moddable XS).
+ * pebblek phone-side AppMessage protocol — the contract between the phone
+ * (src/pkjs, PebbleKit JS) and the native C watch app.
  *
  * The message KEY NAMES below are declared in package.json -> pebble.messageKeys;
  * AppMessage references them by name. This module adds the VALUE encoding (units,
  * enums) that both sides must agree on.
  *
- * CommonJS so PebbleKit JS can `require('../common/protocol')`. The watch side
- * (ESM) keeps a mirror at src/embeddedjs/protocol.js — keep the values in sync.
+ * CommonJS, required by the pkjs modules as `./protocol`. The watch (C) keeps a
+ * mirror at src/c/protocol.h — keep the enum values and encoding in sync.
  *
  * Encoding rules (AppMessage payloads are integers/strings only, so decimals are
  * scaled to integers):
@@ -56,10 +55,12 @@ var AP_STATE_FROM_STRING = {
 
 // Connection status reported by the phone so the watch can show a clear state.
 var CONN = {
-  NO_CONFIG: 0,   // no server address / token configured yet
+  NO_CONFIG: 0,          // no server address configured yet
   DISCONNECTED: 1,
   CONNECTING: 2,
   CONNECTED: 3,
+  AWAITING_APPROVAL: 4,  // access request submitted, pending admin approval on the server
+  ACCESS_DENIED: 5,      // the access request was denied
 };
 
 // Result of an autopilot command, echoed back so the watch can clear its pending UI.

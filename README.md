@@ -1,9 +1,38 @@
 # pebblek
 
-A SignalK app for Pebble. Monitor your boat from your wrist and control your autopilot.
+A [SignalK](https://signalk.org/) app for Pebble. Monitor your boat from your
+wrist and control your autopilot.
 
-A Pebble Alloy project — embedded JavaScript on the watch, powered by Moddable
-XS, alongside C.
+The watch shows boat **heading**, **autopilot status**, **speed over ground**,
+and **wind speed & direction**. The side buttons drive a
+[signalk-autopilot](https://github.com/SignalK/signalk-autopilot):
+
+| Button | Press | Action |
+|--------|-------|--------|
+| Up     | short / long | adjust heading **+1°** / **+10°** |
+| Down   | short / long | adjust heading **−1°** / **−10°** |
+| Select | press | engage / disengage autopilot |
+
+Each command gives a haptic confirmation: a short buzz on success, a long buzz
+on failure.
+
+## How it works
+
+- The **watch app** is native Pebble C (`src/c/`). It renders the dashboard and
+  sends button commands.
+- The **phone app** is PebbleKit JS (`src/pkjs/`). It talks to your SignalK
+  server over a WebSocket, relays telemetry to the watch, and turns button
+  commands into autopilot REST calls. All networking lives here.
+
+The two communicate over Pebble AppMessage.
+
+## Setup
+
+Open the pebblek settings on your phone and enter your **SignalK server
+address** (`host:port`) and a device name. The app requests **read/write**
+access via the SignalK [access-request flow](https://signalk.org/specification/1.5.0/doc/access_requests.html);
+approve it in your server's admin UI (**Security → Access Requests**). No token
+to copy — once approved the watch connects automatically.
 
 ## Building & running
 
@@ -11,22 +40,23 @@ XS, alongside C.
 pebble build                          # build for all targetPlatforms
 pebble install --emulator emery       # install on the emery emulator
 pebble install --phone <ip>           # install to a paired phone
+pebble logs                           # stream watch + phone logs
 ```
 
 ## Target platforms
 
-Alloy targets the modern Pebble hardware: **emery** (Pebble Time 2) and
-**gabbro** (Pebble Round 2). Other platforms are currently not supported.
+**emery** (Pebble Time 2) and **gabbro** (Pebble Round 2). Other platforms are
+not supported.
 
 ## Project layout
 
 ```
-src/c/mdbl.c                   C glue around the Moddable runtime
-src/embeddedjs/main.js         JavaScript that runs on the watch
-src/embeddedjs/manifest.json   Moddable manifest
-src/pkjs/index.js              PebbleKit JS (phone-side) code
-package.json                   Project metadata (UUID, platforms, resources)
-wscript                        Build rules — usually no need to edit
+src/c/main.c        Native C watch app: UI, AppMessage, buttons
+src/c/protocol.h    Shared message enums/encoding (C side)
+src/pkjs/           PebbleKit JS (phone): SignalK client, auth, autopilot, settings
+src/pkjs/protocol.js  Shared message enums/encoding (JS side — mirror of protocol.h)
+package.json        Project metadata (UUID, platforms, message keys)
+wscript             Build rules — usually no need to edit
 ```
 
 ## Documentation

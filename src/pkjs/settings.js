@@ -1,15 +1,17 @@
 /*
- * Persisted phone-side settings: the SignalK server address and access token.
+ * Persisted phone-side state, split into two concerns:
  *
- * Stored under the "clay-settings" localStorage key — the same key Clay's
- * generateUrl() reads to pre-fill the config form — so saved values reappear
- * when the user re-opens settings, giving a single source of truth.
+ *   - User config (server address + device description), stored under the
+ *     "clay-settings" key so Clay's generateUrl() pre-fills the form.
+ *   - Auth state (a persistent clientId and the token obtained via the SignalK
+ *     access-request flow), stored separately under "pebblek-auth" so the token
+ *     is never injected into the config web page.
  */
 
-var STORAGE_KEY = "clay-settings";
+var CONFIG_KEY = "clay-settings";
+var AUTH_KEY = "pebblek-auth";
+var DEFAULT_DESCRIPTION = "Pebble pebblek";
 
-// Clay returns input values as plain strings, but normalize defensively in case
-// a value arrives wrapped as { value: ... }.
 function normalize(field) {
   if (field === null || field === undefined) {
     return "";
@@ -20,40 +22,96 @@ function normalize(field) {
   return ("" + field).trim();
 }
 
-function load() {
-  var parsed = {};
-  var raw = localStorage.getItem(STORAGE_KEY);
-  if (raw) {
-    try {
-      parsed = JSON.parse(raw);
-    } catch (e) {
-      parsed = {};
-    }
+function readJson(key) {
+  var raw = localStorage.getItem(key);
+  if (!raw) {
+    return {};
   }
+  try {
+    return JSON.parse(raw) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function writeJson(key, obj) {
+  localStorage.setItem(key, JSON.stringify(obj));
+}
+
+// RFC 4122 v4 UUID, used as the access-request clientId.
+function uuid() {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, function (c) {
+    var r = (Math.random() * 16) | 0;
+    var v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+// ---- User config ----------------------------------------------------------
+
+function loadConfig() {
+  var p = readJson(CONFIG_KEY);
   return {
-    serverAddress: normalize(parsed.serverAddress),
-    token: normalize(parsed.token),
+    serverAddress: normalize(p.serverAddress),
+    description: normalize(p.description) || DEFAULT_DESCRIPTION,
   };
 }
 
-function save(settings) {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify({
-      serverAddress: normalize(settings.serverAddress),
-      token: normalize(settings.token),
-    })
-  );
+function saveConfig(cfg) {
+  // Merge to preserve any other fields Clay may persist.
+  var existing = readJson(CONFIG_KEY);
+  existing.serverAddress = normalize(cfg.serverAddress);
+  if (cfg.description !== undefined) {
+    existing.description = normalize(cfg.description);
+  }
+  writeJson(CONFIG_KEY, existing);
 }
 
-// True once both a server address and a token have been provided.
-function isConfigured(settings) {
-  settings = settings || load();
-  return settings.serverAddress.length > 0 && settings.token.length > 0;
+function hasServer() {
+  return loadConfig().serverAddress.length > 0;
+}
+
+// ---- Auth state -----------------------------------------------------------
+
+function loadAuth() {
+  var p = readJson(AUTH_KEY);
+  return {
+    clientId: normalize(p.clientId),
+    token: normalize(p.token),
+  };
+}
+
+// Return the persistent clientId, generating and storing one on first use.
+function ensureClientId() {
+  var auth = loadAuth();
+  if (!auth.clientId) {
+    auth.clientId = uuid();
+    writeJson(AUTH_KEY, auth);
+  }
+  return auth.clientId;
+}
+
+function setToken(token) {
+  var auth = loadAuth();
+  auth.token = normalize(token);
+  writeJson(AUTH_KEY, auth);
+}
+
+function clearToken() {
+  setToken("");
+}
+
+function hasToken() {
+  return loadAuth().token.length > 0;
 }
 
 module.exports = {
-  load: load,
-  save: save,
-  isConfigured: isConfigured,
+  loadConfig: loadConfig,
+  saveConfig: saveConfig,
+  hasServer: hasServer,
+  loadAuth: loadAuth,
+  ensureClientId: ensureClientId,
+  setToken: setToken,
+  clearToken: clearToken,
+  hasToken: hasToken,
 };
