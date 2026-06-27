@@ -12,6 +12,17 @@ var CONFIG_KEY = "clay-settings";
 var AUTH_KEY = "pebblek-auth";
 var DEFAULT_DESCRIPTION = "Pebble pebblek";
 
+// Optional build-time SignalK server override (see wscript / PEBBLEK_DEV_SERVER).
+// When set it wins over the user's Clay config, so the emulator can connect to a
+// hardcoded localhost server without going through the settings page. The file is
+// generated at build time and gitignored; tolerate its absence.
+var DEV_SERVER = "";
+try {
+  DEV_SERVER = normalize(require("./buildconfig").devServer);
+} catch (e) {
+  DEV_SERVER = "";
+}
+
 function normalize(field) {
   if (field === null || field === undefined) {
     return "";
@@ -52,7 +63,7 @@ function uuid() {
 function loadConfig() {
   var p = readJson(CONFIG_KEY);
   return {
-    serverAddress: normalize(p.serverAddress),
+    serverAddress: DEV_SERVER || normalize(p.serverAddress),
     description: normalize(p.description) || DEFAULT_DESCRIPTION,
   };
 }

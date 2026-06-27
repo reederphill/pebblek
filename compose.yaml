@@ -1,0 +1,18 @@
+services:
+  signalk:
+    image: signalk/signalk-server
+    ports:
+      - "3000:3000"
+    volumes:
+      - signalk:/home/node/.signalk/
+    environment: []
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        cd /home/node/.signalk/
+        npm install @signalk/signalk-autopilot
+        /home/node/signalk/startup.sh --sample-n2k-data
+    restart: always
+volumes:
+  signalk:
