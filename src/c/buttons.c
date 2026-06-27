@@ -2,6 +2,7 @@
 
 #include "comm.h"
 #include "protocol.h"
+#include "state.h"
 #include "ui.h"
 
 static void up_click(ClickRecognizerRef r, void* c) {
@@ -22,7 +23,9 @@ static void down_long(ClickRecognizerRef r, void* c) {
 }
 static void select_long(ClickRecognizerRef r, void* c) {
     comm_send_int(MESSAGE_KEY_CMD_TOGGLE_ENGAGE, 1);
-    ui_set_feedback("ENGAGE");
+    const int ap = app_state()->autopilot_state;
+    const bool engaged = (ap != AP_STATE_STANDBY && ap != AP_STATE_UNKNOWN);
+    ui_set_feedback(engaged ? "DISENGAGE" : "ENGAGE");
 }
 
 void buttons_click_config_provider(void* context) {
