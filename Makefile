@@ -31,7 +31,7 @@ dev: up
 	SIGNALK_MOCKUP=true pebble install --emulator $(PLATFORM)
 
 ## install-phone: install to a real Pebble device (requires a paired phone)
-install-phone:
+install-phone: clean build
 	pebble install --cloudpebble
 
 ## logs: stream watch APP_LOG + pkjs console.log
@@ -39,7 +39,7 @@ logs:
 	pebble logs
 
 ## clean: remove build output
-clean: down
+clean:
 	pebble clean
 
 ## help: list available targets
