@@ -1,9 +1,11 @@
 /*
  * Autopilot commands — watch -> phone -> signalk-autopilot plugin REST PUTs.
  *
- * The watch sends AppMessages carrying CMD_ADJUST_HEADING (relative degrees) and
- * /or CMD_TOGGLE_ENGAGE (1). We translate those into REST PUTs against the
- * signalk-autopilot plugin and echo a CMD_RESULT (OK/FAILED) back to the watch.
+ * The watch sends AppMessages carrying CMD_ADJUST_HEADING (relative degrees)
+ * and/or CMD_SET_STATE (a target AP_STATE). We translate those into REST PUTs
+ * against the signalk-autopilot plugin and echo a CMD_RESULT (OK/FAILED) back to
+ * the watch. The watch already knows the current state from telemetry, so it
+ * decides the target state (engage AUTO/WIND or disengage to STANDBY).
  *
  * Endpoints (base = baseHttpUrl(serverAddress)):
  *   adjustHeading:
@@ -19,13 +21,11 @@
  */
 
 var settings = require("./settings");
-var state = require("./state");
 var outbox = require("./outbox");
 var xhrJson = require("./http").xhrJson;
 var baseHttpUrl = require("./auth").baseHttpUrl;
 var protocol = require("./protocol");
 
-var AP_STATE = protocol.AP_STATE;
 var AP_STATE_TO_STRING = protocol.AP_STATE_TO_STRING;
 var CMD_RESULT = protocol.CMD_RESULT;
 
@@ -66,13 +66,11 @@ function adjustHeading(delta) {
   put("actions/adjustHeading", { value: delta }, "adjustHeading(" + delta + ")");
 }
 
-// Toggle the autopilot between engaged (auto) and disengaged (standby), based on
-// the latest known state streamed in via telemetry.
-function toggleEngage() {
-  var current = state.getAutopilotState();
-  var next = current === AP_STATE.AUTO ? AP_STATE.STANDBY : AP_STATE.AUTO;
-  var value = AP_STATE_TO_STRING[next];
-  put("state", { value: value }, "toggleEngage(" + value + ")");
+// Switch the autopilot to the target state requested by the watch (AUTO/WIND to
+// engage, STANDBY to disengage).
+function setState(target) {
+  var value = AP_STATE_TO_STRING[target];
+  put("state", { value: value }, "setState(" + value + ")");
 }
 
 // Handle a raw AppMessage payload from the watch. A single message may carry
@@ -84,13 +82,13 @@ function handleCommand(payload) {
   if (payload.CMD_ADJUST_HEADING !== undefined && payload.CMD_ADJUST_HEADING !== null) {
     adjustHeading(payload.CMD_ADJUST_HEADING | 0);
   }
-  if (payload.CMD_TOGGLE_ENGAGE) {
-    toggleEngage();
+  if (payload.CMD_SET_STATE !== undefined && payload.CMD_SET_STATE !== null) {
+    setState(payload.CMD_SET_STATE | 0);
   }
 }
 
 module.exports = {
   handleCommand: handleCommand,
   adjustHeading: adjustHeading,
-  toggleEngage: toggleEngage,
+  setState: setState,
 };

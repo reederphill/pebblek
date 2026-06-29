@@ -14,7 +14,7 @@
  *   WIND_ANGLE         degrees 0..359, apparent, relative to the bow (0 = ahead)
  *   CONNECTION_STATUS  one of ConnStatus
  *   CMD_ADJUST_HEADING relative degrees: +1, +10, -1, -10  (watch -> phone)
- *   CMD_TOGGLE_ENGAGE  1 = toggle auto/standby              (watch -> phone)
+ *   CMD_SET_STATE      target ApState to engage/disengage   (watch -> phone)
  *   CMD_RESULT         one of CmdResult                     (phone -> watch)
  */
 

@@ -13,7 +13,6 @@
 
 var protocol = require("./protocol");
 var outbox = require("./outbox");
-var state = require("./state");
 
 var AP_STATE = protocol.AP_STATE;
 var AP_STATE_FROM_STRING = protocol.AP_STATE_FROM_STRING;
@@ -90,7 +89,6 @@ function applyValue(path, value) {
         if (ap === undefined) {
           ap = AP_STATE.UNKNOWN;
         }
-        state.setAutopilotState(ap);
         outbox.set("AUTOPILOT_STATE", ap);
       }
       break;

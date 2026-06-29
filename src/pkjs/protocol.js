@@ -22,7 +22,8 @@
  *
  *   Watch -> phone (commands):
  *     CMD_ADJUST_HEADING int   relative degrees: +1, +10, -1, -10
- *     CMD_TOGGLE_ENGAGE  int   1 = toggle autopilot between AUTO and STANDBY
+ *     CMD_SET_STATE      int   target AP_STATE.* to switch the autopilot to
+ *                              (STANDBY = disengage, AUTO/WIND = engage)
  *
  *   Phone -> watch (command acknowledgement):
  *     CMD_RESULT         int   one of CMD_RESULT.*
