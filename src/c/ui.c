@@ -169,7 +169,7 @@ static void canvas_update(Layer* layer, GContext* ctx) {
     // Engaged: large mode initial (A/W/R). Off: "OFF" in a font that fits the box.
     graphics_draw_text(ctx, ap_box_text(state->autopilot_state),
                        engaged ? f_med : f_small,
-                       GRect(sq_x, sq_y + (engaged ? 5 : 11), sq, 30),
+                       GRect(sq_x, sq_y + (engaged ? 5 : 8), sq, 30),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
     // ---- Wind section: "WIND" title over the dial (direction) + speed ------
