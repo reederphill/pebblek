@@ -21,21 +21,14 @@ static bool ap_engaged(int s) {
     return s != AP_STATE_STANDBY && s != AP_STATE_UNKNOWN;
 }
 
-static const char* ap_label(int s) {
-    switch (s) {
-        case AP_STATE_AUTO:  return "AUTO";
-        case AP_STATE_WIND:  return "WIND";
-        case AP_STATE_ROUTE: return "ROUTE";
-        default:             return "OFF";
-    }
-}
-
-static const char* ap_glyph(int s) {
+// Text shown inside the autopilot box: the mode initial when engaged, "OFF"
+// otherwise (the box itself is the legend — no separate caption needed).
+static const char* ap_box_text(int s) {
     switch (s) {
         case AP_STATE_AUTO:  return "A";
         case AP_STATE_WIND:  return "W";
         case AP_STATE_ROUTE: return "R";
-        default:             return "";
+        default:             return "OFF";
     }
 }
 
@@ -85,24 +78,42 @@ static void draw_row(GContext* ctx, const char* text, GFont font, int y, int h, 
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
+// Draws a numeric value with its unit beside it (unit in a smaller font,
+// bottom-aligned to the value), the pair centered within [x, x+w].
+static void draw_value_unit(GContext* ctx, const char* value, const char* unit,
+                            GFont vfont, GFont ufont, int x, int y, int w) {
+    const GSize vs = graphics_text_layout_get_content_size(
+        value, vfont, GRect(0, 0, w, 44), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+    const GSize us = graphics_text_layout_get_content_size(
+        unit, ufont, GRect(0, 0, w, 44), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+    const int gap = 4;
+    const int sx = x + (w - (vs.w + gap + us.w)) / 2;
+    graphics_draw_text(ctx, value, vfont, GRect(sx, y, vs.w + 8, vs.h),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    graphics_draw_text(ctx, unit, ufont,
+                       GRect(sx + vs.w + gap, y + (vs.h - us.h) - 2, us.w + 8, us.h),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+}
+
 /*
- * Connected dashboard layout. The autopilot square is green when engaged and
- * dark gray on standby; the dial arrow points in the apparent wind direction.
- * On round, the rounded corners clip the edges, so the heading + square are
- * centered as a group instead of hugging the left/right edges.
+ * Connected dashboard layout. The autopilot square is green with the mode
+ * initial (A/W/R) when engaged, dark gray with "OFF" on standby; the dial
+ * arrow points in the apparent wind direction. The middle "WIND" section
+ * groups direction (dial) and speed; speed and SOG show their unit beside the
+ * number. On round, the rounded corners clip the edges, so the heading +
+ * square are centered as a group instead of hugging the left/right edges.
  *
  *   Rectangular (emery)            Round (gabbro)
  *   +----------------------+        .--------------------.
  *   | HDG           +----+ |      /     HDG     +----+    \
  *   |  142          | A  | |     |     142      | A  |     |
  *   |               +----+ |     |              +----+     |
- *   |                AUTO  |    |                 AUTO       |
- *   |    _.-""-._   WIND   |    |    _.-""-._    WIND       |
- *   |  (    ^    )  12.3   |    |  (    ^    )   12.3       |
- *   |  (    |    )  kn     |    |  (    |    )   kn         |
+ *   |        WIND          |    |         WIND               |
+ *   |    _.-""-._          |    |    _.-""-._               |
+ *   |  (    ^    ) 12.3 kn |    |  (    ^    ) 12.3 kn      |
  *   |    "-.__.-"          |     |    "-.__.-"             |
- *   |                      |      \                       /
- *   |     SOG  6.4 kn      |       '     SOG  6.4 kn     '
+ *   |        SOG           |      \        SOG            /
+ *   |      6.4 kn          |       '     6.4 kn          '
  *   +----------------------+        '--------------------'
  */
 static void canvas_update(Layer* layer, GContext* ctx) {
@@ -155,18 +166,20 @@ static void canvas_update(Layer* layer, GContext* ctx) {
     graphics_context_set_stroke_color(ctx, GColorWhite);
     graphics_draw_round_rect(ctx, sq_r, 6);
     graphics_context_set_text_color(ctx, engaged ? GColorBlack : GColorWhite);
-    graphics_draw_text(ctx, ap_glyph(state->autopilot_state), f_med,
-                       GRect(sq_x, sq_y + 5, sq, 30),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-    graphics_context_set_text_color(ctx, engaged ? GColorGreen : GColorLightGray);
-    graphics_draw_text(ctx, ap_label(state->autopilot_state), f_tiny,
-                       GRect(sq_x - 10, sq_y + sq + 1, sq + 20, 14),
+    // Engaged: large mode initial (A/W/R). Off: "OFF" in a font that fits the box.
+    graphics_draw_text(ctx, ap_box_text(state->autopilot_state),
+                       engaged ? f_med : f_small,
+                       GRect(sq_x, sq_y + (engaged ? 5 : 11), sq, 30),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-    // ---- Wind: big dial (apparent direction) + speed grouped beside it -----
-    const int radius = PBL_IF_ROUND_ELSE(36, 40);
-    const int cx = PBL_IF_ROUND_ELSE(w / 2 - 30, 8 + radius + 4);
-    const int cy = top + PBL_IF_ROUND_ELSE(56, 72) + radius;
+    // ---- Wind section: "WIND" title over the dial (direction) + speed ------
+    const int wind_title_y = top + PBL_IF_ROUND_ELSE(64, 62);
+    graphics_context_set_text_color(ctx, GColorWhite);
+    draw_row(ctx, "WIND", f_small, wind_title_y, 18, w);
+
+    const int radius = PBL_IF_ROUND_ELSE(44, 40);
+    const int cx = PBL_IF_ROUND_ELSE(w / 2 - 34, 8 + radius + 4);
+    const int cy = wind_title_y + 22 + radius;
     const GPoint center = GPoint(cx, cy);
     graphics_context_set_stroke_color(ctx, GColorWhite);
     graphics_draw_circle(ctx, center, radius);
@@ -177,21 +190,16 @@ static void canvas_update(Layer* layer, GContext* ctx) {
     graphics_context_set_fill_color(ctx, GColorRed);
     gpath_draw_filled(ctx, s_arrow);
 
-    const int wx = cx + radius + 10;
-    graphics_context_set_text_color(ctx, GColorWhite);
+    // Wind speed beside the dial, unit next to the number.
+    const int wx = cx + radius + 8;
     snprintf(buf, sizeof(buf), "%d.%d", state->wind_speed / 10, state->wind_speed % 10);
-    graphics_draw_text(ctx, buf, f_speed, GRect(wx, cy - 28, w - wx - 4, 34),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-    graphics_draw_text(ctx, "WIND kn", f_tiny, GRect(wx, cy + 8, w - wx - 4, 16),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    draw_value_unit(ctx, buf, "kn", f_speed, f_small, wx, cy - 18, w - wx - 2);
 
-    // ---- SOG: own row, same number size as wind speed (equal prominence) ---
-    const int sog_y = h - PBL_IF_ROUND_ELSE(56, 48);
+    // ---- SOG: title above the number, unit beside it -----------------------
+    const int sog_title_y = cy + radius + PBL_IF_ROUND_ELSE(6, 2);
+    draw_row(ctx, "SOG", f_small, sog_title_y, 18, w);
     snprintf(buf, sizeof(buf), "%d.%d", state->sog / 10, state->sog % 10);
-    graphics_draw_text(ctx, buf, f_speed, GRect(0, sog_y, w, 34),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-    graphics_draw_text(ctx, "SOG kn", f_tiny, GRect(0, sog_y + 30, w, 16),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    draw_value_unit(ctx, buf, "kn", f_speed, f_small, 0, sog_title_y + 16, w);
 
     // Transient feedback pill (button pressed / command acked).
     if (state->feedback[0]) {
