@@ -5,14 +5,20 @@ services:
       - "3000:3000"
     volumes:
       - signalk:/home/node/.signalk/
-    environment: []
+      # Mount the local mock autopilot plugin and npm-link it in below.
+      - ./dev/signalk-autopilot-mock:/usr/lib/node_modules/signalk-autopilot-mock
+    environment:
+      - DEBUG=signalk-autopilot-mock,signalk-server:put
     entrypoint:
       - /bin/sh
       - -c
       - |
         cd /home/node/.signalk/
-        npm install @signalk/signalk-autopilot
-        /home/node/signalk/startup.sh --sample-n2k-data
+        npm link signalk-autopilot-mock
+        # --securityenabled: the watch authenticates via the SignalK access-request
+        # flow and uses a Bearer token, so security must be on. The mock simulates
+        # the boat itself, so we don't load --sample-n2k-data.
+        /home/node/signalk/startup.sh --securityenabled
     restart: always
 volumes:
   signalk:

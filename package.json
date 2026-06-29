@@ -27,7 +27,7 @@
       "WIND_ANGLE",
       "CONNECTION_STATUS",
       "CMD_ADJUST_HEADING",
-      "CMD_TOGGLE_ENGAGE",
+      "CMD_SET_STATE",
       "CMD_RESULT"
     ],
     "resources": {

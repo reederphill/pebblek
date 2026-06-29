@@ -1,0 +1,13 @@
+{
+  "name": "signalk-autopilot-mock",
+  "version": "0.1.0",
+  "description": "Fake SignalK autopilot for local pebblek development — implements the signalk-autopilot REST API in memory.",
+  "main": "index.js",
+  "private": true,
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-category-utility"
+  ],
+  "author": "iuri aranda <iuri.aranda@gmail.com>",
+  "license": "Apache-2.0"
+}
