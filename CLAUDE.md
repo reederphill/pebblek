@@ -19,6 +19,32 @@ pebble logs                           # stream APP_LOG (watch) + console.log (pk
 
 There is no separate lint/test tooling configured. The harmless `LOAD segment with RWX permissions` linker warning appears on every build.
 
+## Local development & testing
+
+The `Makefile` wraps the dev loop; `make help` lists targets. The core workflow:
+
+```sh
+make dev                  # the one command: (re)launch the emulator end-to-end
+make dev PLATFORM=gabbro  # same, on the round emulator (default is emery)
+make up / make down       # start/stop just the SignalK server
+make logs                 # stream watch APP_LOG + pkjs console.log
+```
+
+**Always relaunch with `make dev`** (not a bare `pebble install`). It bundles everything the dev loop needs and any of these done piecemeal leaves the emulator wedged or unauthenticated:
+
+1. `docker compose up -d` — a local SignalK server (`compose.yaml`) with the `dev/signalk-autopilot-mock` plugin simulating the boat (telemetry + autopilot). Config (approved devices, `secretKey`) persists in the `signalk` Docker volume.
+2. `pebble kill` — resets the emulator.
+3. Bakes three build-time values into the gitignored `src/pkjs/buildconfig.js` (via `wscript`, read by `settings.js`). These must be set at **build** time and are kept on the install step too, so its "build if needed" pass doesn't regenerate `buildconfig.js` without them:
+   - `PEBBLEK_DEV_SERVER` (`DEV_SERVER`) — hardcodes the server, skipping the Clay settings page.
+   - `PEBBLEK_DEVICE_UUID` (`SIGNALK_DEVICE_UUID`) — a **static** access-request clientId instead of a random per-device one.
+   - `PEBBLEK_DEVICE_TOKEN` (`SIGNALK_DEVICE_TOKEN`) — a pre-minted device token so the watch **skips the access-request/approval flow** on every launch (the emulator's pkjs localStorage starts empty, so it would otherwise re-request and need manual approval each time).
+
+**Why the baked token:** signalk-server has no config to auto-approve device requests — `requestAccess` always creates a PENDING request. But it mints device tokens as `jwt.sign({ device: clientId }, secretKey)` (no expiry), so `dev/signalk-token.sh` reads the running server's `secretKey` from its `security.json` and re-mints that token for the static clientId. `settings.loadAuth()` prefers a stored token, else falls back to this `DEV_TOKEN`; if it's rejected (e.g. device not yet approved) the watch falls back to the normal access-request flow. The static clientId still needs a **one-time** manual approval per Docker volume (it persists in the volume; a `docker compose down -v` wipes it and requires re-approving once). Production builds (plain `pebble build`) leave all three empty → normal user-configured behaviour.
+
+**Screenshots:** `pebble screenshot --emulator emery --no-open <path>` (always pass `--no-open`). The qemu/pypkjs screenshot transport is flaky and times out intermittently — retry in a loop until it prints "Saved".
+
+**Displays:** emery (Pebble Time 2) is 200×228 rectangular; gabbro (Pebble Round 2) is 260×260 round (rounded corners clip edges, so `ui.c` centers content as a group on round).
+
 ## Architecture: two runtimes
 
 The watch and phone run different code; understanding the split is essential.

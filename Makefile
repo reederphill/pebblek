@@ -9,6 +9,16 @@ PLATFORM ?= emery
 #   make dev DEV_SERVER=http://192.168.1.10:3000
 DEV_SERVER ?= http://localhost:3000
 
+# Static access-request clientId baked into the dev build, so the SignalK server
+# recognises the watch across reinstalls (approve once, then it's auto-granted).
+SIGNALK_DEVICE_UUID ?= 00000000-0000-0000-0000-000000000000
+
+# Device token baked into the dev build so the watch skips the approval flow on
+# every emulator launch. Minted from the running server's secretKey for the
+# clientId above (see dev/signalk-token.sh); empty if the server is down or the
+# device isn't approved yet, in which case the watch uses the access-request flow.
+SIGNALK_DEVICE_TOKEN = $(shell sh dev/signalk-token.sh $(SIGNALK_DEVICE_UUID) 2>/dev/null)
+
 .DEFAULT_GOAL := build
 
 .PHONY: build up dev install-phone logs clean help
@@ -31,8 +41,9 @@ down:
 # is kept on the install step too so its own "build if needed" pass doesn't
 # regenerate buildconfig.js without it.
 dev: up
-	PEBBLEK_DEV_SERVER=$(DEV_SERVER) pebble build
-	PEBBLEK_DEV_SERVER=$(DEV_SERVER) pebble install --emulator $(PLATFORM)
+	pebble kill || true
+	PEBBLEK_DEV_SERVER=$(DEV_SERVER) PEBBLEK_DEVICE_UUID=$(SIGNALK_DEVICE_UUID) PEBBLEK_DEVICE_TOKEN="$(SIGNALK_DEVICE_TOKEN)" pebble build
+	PEBBLEK_DEV_SERVER=$(DEV_SERVER) PEBBLEK_DEVICE_UUID=$(SIGNALK_DEVICE_UUID) PEBBLEK_DEVICE_TOKEN="$(SIGNALK_DEVICE_TOKEN)" pebble install --emulator $(PLATFORM)
 
 ## install-phone: install to a real Pebble device (requires a paired phone)
 install-phone:
