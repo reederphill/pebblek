@@ -41,7 +41,13 @@ make logs                 # stream watch APP_LOG + pkjs console.log
 
 **Why the baked token:** signalk-server has no config to auto-approve device requests — `requestAccess` always creates a PENDING request. But it mints device tokens as `jwt.sign({ device: clientId }, secretKey)` (no expiry), so `dev/signalk-token.sh` reads the running server's `secretKey` from its `security.json` and re-mints that token for the static clientId. `settings.loadAuth()` prefers a stored token, else falls back to this `DEV_TOKEN`; if it's rejected (e.g. device not yet approved) the watch falls back to the normal access-request flow. The static clientId still needs a **one-time** manual approval per Docker volume (it persists in the volume; a `docker compose down -v` wipes it and requires re-approving once). Production builds (plain `pebble build`) leave all three empty → normal user-configured behaviour.
 
-**Screenshots:** `pebble screenshot --emulator emery --no-open <path>` (always pass `--no-open`). The qemu/pypkjs screenshot transport is flaky and times out intermittently — retry in a loop until it prints "Saved".
+**Screenshots:** `pebble screenshot --emulator emery --no-open <path>` (always pass `--no-open`). The qemu/pypkjs screenshot transport is flaky and times out intermittently — if it doesn't print "Saved", just run the same command again (as a separate call, not a shell `for` loop — see below).
+
+**Running the dev tools without permission prompts:** `.claude/settings.json` allowlists `make *`, `pebble *`, `docker compose *`, and the read-only helpers `tail *` / `head *` / `ls *`. These prefix rules only match when the tool is the **start of a plain command** — so keep commands simple and one tool per call:
+
+- Run `make dev`, `pebble screenshot …`, etc. as standalone commands. Piping `make dev` into anything other than the allowlisted `tail`/`head` (e.g. `| grep`, `| sed`), chaining unrelated tools with `&&`, or wrapping calls in a `for`/`while` loop all fall outside the rules and trigger a prompt.
+- To wait for the emulator to connect or to retry a flaky screenshot, issue repeated **separate** `pebble screenshot` calls instead of a shell retry loop.
+- New tools you find yourself running often for the dev loop belong in `.claude/settings.json` (committed, team-wide), not in a one-off compound command.
 
 **Displays:** emery (Pebble Time 2) is 200×228 rectangular; gabbro (Pebble Round 2) is 260×260 round (rounded corners clip edges, so `ui.c` centers content as a group on round).
 
