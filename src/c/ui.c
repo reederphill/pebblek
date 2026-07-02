@@ -6,15 +6,7 @@
 
 static Window* s_window;
 static Layer* s_canvas;
-static GPath* s_arrow;
 static AppTimer* s_feedback_timer;
-
-// Apparent-wind arrow, pointing up (bow) before rotation. Sized for the large
-// dial (tip ~32px from center, short tail for a clear direction read).
-static const GPathInfo ARROW_POINTS = {
-    .num_points = 4,
-    .points = (GPoint[]){{0, -32}, {9, 9}, {0, 2}, {-9, 9}},
-};
 
 // Engaged = any active autopilot mode (standby/unknown render as "off").
 static bool ap_engaged(int s) {
@@ -52,6 +44,11 @@ static const char* conn_text(int conn) {
 
 void ui_mark_dirty(void) {
     if (s_canvas) layer_mark_dirty(s_canvas);
+}
+
+// Redraw once a minute so the clock stays current.
+static void tick_handler(struct tm* tick_time, TimeUnits units_changed) {
+    ui_mark_dirty();
 }
 
 // ---- feedback (optimistic button + command ack) ---------------------------
@@ -95,43 +92,158 @@ static void draw_value_unit(GContext* ctx, const char* value, const char* unit,
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 }
 
+// Rendered width of a string in a given font.
+static int text_width(const char* s, GFont f) {
+    return graphics_text_layout_get_content_size(
+               s, f, GRect(0, 0, 140, 44), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft)
+        .w;
+}
+
+// Rendered width of a value + unit pair, matching draw_value_unit's 4px gap.
+static int value_unit_width(const char* value, const char* unit, GFont vf, GFont uf) {
+    return text_width(value, vf) + 4 + text_width(unit, uf);
+}
+
+// Autopilot state square: green + mode initial (A/W/R) when engaged, dark gray +
+// "OFF" on standby. Its white outline is the legend, so no caption is needed.
+static void draw_ap_square(GContext* ctx, const AppState* state, int x, int y, int sq,
+                           GFont f_med, GFont f_small) {
+    const bool engaged = ap_engaged(state->autopilot_state);
+    const GRect sq_r = GRect(x, y, sq, sq);
+    graphics_context_set_fill_color(ctx, engaged ? GColorGreen : GColorDarkGray);
+    graphics_fill_rect(ctx, sq_r, 6, GCornersAll);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_draw_round_rect(ctx, sq_r, 6);
+    graphics_context_set_text_color(ctx, engaged ? GColorBlack : GColorWhite);
+    const char* txt = ap_box_text(state->autopilot_state);
+    GFont f = engaged ? f_med : f_small;
+    const GSize ts = graphics_text_layout_get_content_size(
+        txt, f, GRect(0, 0, sq, sq), GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter);
+    // Center vertically; the -3 corrects Pebble's font top-line padding so caps
+    // sit in the visual middle of the box.
+    const int ty = y + (sq - ts.h) / 2 - 3;
+    graphics_draw_text(ctx, txt, f, GRect(x, ty, sq, ts.h + 6),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+
+// Compact wind wheel: a circle with a small bow tick at the top, a small red
+// direction tip riding just inside the rim (pointing outward at the apparent-wind
+// angle), and the wind speed ("12.3 kn") centered inside the circle.
+static void draw_wind_wheel(GContext* ctx, int cx, int cy, int radius, int wind_angle,
+                            int wind_speed, GFont f_val, GFont f_unit) {
+    const GPoint center = GPoint(cx, cy);
+    graphics_context_set_stroke_color(ctx, GColorWhite);
+    graphics_draw_circle(ctx, center, radius);
+    graphics_draw_line(ctx, GPoint(center.x, center.y - radius),
+                       GPoint(center.x, center.y - radius + 6));
+
+    // Just the arrow tip, near the rim. Built per-frame so it tracks the radius.
+    const int tip = radius - 1;
+    const int base = radius - 13;
+    GPoint pts[3] = {{0, -tip}, {6, -base}, {-6, -base}};
+    GPathInfo info = {.num_points = 3, .points = pts};
+    GPath* arrow = gpath_create(&info);
+    gpath_rotate_to(arrow, DEG_TO_TRIGANGLE(wind_angle));
+    gpath_move_to(arrow, center);
+    graphics_context_set_fill_color(ctx, GColorRed);
+    gpath_draw_filled(ctx, arrow);
+    gpath_destroy(arrow);
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d.%d", wind_speed / 10, wind_speed % 10);
+    draw_value_unit(ctx, buf, "kn", f_val, f_unit, cx - radius, cy - 16, 2 * radius);
+}
+
 /*
- * Connected dashboard layout. The autopilot square is green with the mode
- * initial (A/W/R) when engaged, dark gray with "OFF" on standby; the dial
- * arrow points in the apparent wind direction. The middle "WIND" section
- * groups direction (dial) and speed; speed and SOG show their unit beside the
- * number. On round, the rounded corners clip the edges, so the heading +
- * square are centered as a group instead of hugging the left/right edges.
+ * Connected dashboard, per display shape. The autopilot square is green with the
+ * mode initial (A/W/R) when engaged, dark gray with "OFF" on standby. The wind
+ * wheel shows a small red tip near the rim in the apparent-wind direction with
+ * the wind speed centered inside it.
  *
- *   Rectangular (emery)            Round (gabbro)
- *   +----------------------+        .--------------------.
- *   | HDG           +----+ |      /     HDG     +----+    \
- *   |  142          | A  | |     |     142      | A  |     |
- *   |               +----+ |     |              +----+     |
- *   |        WIND          |    |         WIND               |
- *   |    _.-""-._          |    |    _.-""-._               |
- *   |  (    ^    ) 12.3 kn |    |  (    ^    ) 12.3 kn      |
- *   |    "-.__.-"          |     |    "-.__.-"             |
- *   |        SOG           |      \        SOG            /
- *   |      6.4 kn          |       '     6.4 kn          '
- *   +----------------------+        '--------------------'
+ *   Both shapes (emery / gabbro)
+ *   .----------------------------.
+ *   |           14:32            |  <- clock (drawn by canvas_update)
+ *   |---------------------------- |  <- divider
+ *   |  HDG    SOG       +----+    |
+ *   |  142    6.4kn     | A  |    |
+ *   |                   +----+    |
+ *   |            WIND            |
+ *   |           _.-^-._          |
+ *   |          / 12.3  \         |
+ *   |          \  kn   /         |
+ *   |           "-.__.-"         |
+ *   '----------------------------'
+ *
+ * The clock + divider across the top are drawn by canvas_update (on every screen,
+ * not just the dashboard). Below that, HDG + SOG + the square form a centered top
+ * row and the wind wheel is centered under it. Emery just uses slightly smaller
+ * columns/wheel to fit its narrower screen (on round the corners would clip a
+ * wider layout anyway).
  */
+static void draw_dashboard(GContext* ctx, const AppState* state, int w) {
+    char hbuf[12], sbuf[12];
+    GFont f_num = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);   // all values
+    GFont f_title = fonts_get_system_font(FONT_KEY_GOTHIC_14);      // all titles + units
+    GFont f_med = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);   // autopilot mode letter
+
+    const int sq = 42;
+
+    // ---- Top row: HDG | SOG | square. Each box is sized to its own content and
+    //      the three are laid out with equal gaps, centered as a group, so they
+    //      read as evenly spaced regardless of the current values. ------------
+    snprintf(hbuf, sizeof(hbuf), "%d°", state->heading);
+    snprintf(sbuf, sizeof(sbuf), "%d.%d", state->sog / 10, state->sog % 10);
+    const int hw = text_width(hbuf, f_num);
+    const int sw = value_unit_width(sbuf, "kn", f_num, f_title);
+    const int sep = PBL_IF_ROUND_ELSE(16, 12);
+    const int gx = (w - (hw + sep + sw + sep + sq)) / 2;
+    const int row_top = 44;
+    const int num_y = row_top + 16;
+
+    graphics_context_set_text_color(ctx, GColorWhite);
+    graphics_draw_text(ctx, "HDG", f_title, GRect(gx, row_top, hw, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    graphics_draw_text(ctx, hbuf, f_num, GRect(gx, num_y, hw, 32),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+    const int sog_x = gx + hw + sep;
+    graphics_draw_text(ctx, "SOG", f_title, GRect(sog_x, row_top, sw, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    draw_value_unit(ctx, sbuf, "kn", f_num, f_title, sog_x, num_y, sw);
+
+    draw_ap_square(ctx, state, sog_x + sw + sep, row_top + 10, sq, f_med, f_title);
+
+    // ---- Wind section: a single centered wheel with the speed inside -------
+    const int wind_title_y = 104;
+    graphics_context_set_text_color(ctx, GColorWhite);
+    draw_row(ctx, "WIND", f_title, wind_title_y, 18, w);
+
+    const int radius = PBL_IF_ROUND_ELSE(48, 42);
+    const int cy = wind_title_y + 22 + radius;
+    draw_wind_wheel(ctx, w / 2, cy, radius, state->wind_angle, state->wind_speed, f_num, f_title);
+}
+
 static void canvas_update(Layer* layer, GContext* ctx) {
     const AppState* state = app_state();
     const GRect b = layer_get_bounds(layer);
     const int w = b.size.w;
-    const int h = b.size.h;
-    char buf[24];
 
     graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_rect(ctx, b, 0, GCornerNone);
     graphics_context_set_text_color(ctx, GColorWhite);
 
-    GFont f_big = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD);
-    GFont f_speed = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
     GFont f_med = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
-    GFont f_small = fonts_get_system_font(FONT_KEY_GOTHIC_18);
-    GFont f_tiny = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+
+    // Clock across the very top, shown on both the dashboard and status screens,
+    // with a divider line separating it from the rest of the screen. On round the
+    // line is inset so its ends don't disappear into the clipped corners.
+    char timebuf[16];
+    clock_copy_time_string(timebuf, sizeof(timebuf));
+    draw_row(ctx, timebuf, f_med, PBL_IF_ROUND_ELSE(6, 2), 28, w);
+    const int div_y = PBL_IF_ROUND_ELSE(37, 33);
+    const int div_inset = PBL_IF_ROUND_ELSE(44, 8);
+    graphics_context_set_stroke_color(ctx, GColorLightGray);
+    graphics_draw_line(ctx, GPoint(div_inset, div_y), GPoint(w - div_inset, div_y));
 
     // Connection status screen replaces the dashboard until connected.
     if (state->conn != CONN_CONNECTED) {
@@ -139,67 +251,7 @@ static void canvas_update(Layer* layer, GContext* ctx) {
         return;
     }
 
-    const int top = PBL_IF_ROUND_ELSE(24, 8);
-
-    // ---- Heading (big number) + autopilot square --------------------------
-    // Rectangular: heading hugs the left edge, square the right edge. Round:
-    // the rounded corners clip the edges, so center the heading+square as a
-    // group instead.
-    const int sq = 42;
-    const int head_w = 96;  // fits up to "359°"
-    const int grp_x = (w - (head_w + 8 + sq)) / 2;  // round: centered group
-    const int head_x = PBL_IF_ROUND_ELSE(grp_x, 8);
-    const GTextAlignment head_align = PBL_IF_ROUND_ELSE(GTextAlignmentRight, GTextAlignmentLeft);
-    const int sq_x = PBL_IF_ROUND_ELSE(grp_x + head_w + 8, w - 8 - sq);
-    const int sq_y = top + 14;
-
-    graphics_draw_text(ctx, "HDG", f_tiny, GRect(head_x, top, head_w, 16),
-                       GTextOverflowModeTrailingEllipsis, head_align, NULL);
-    snprintf(buf, sizeof(buf), "%d°", state->heading);
-    graphics_draw_text(ctx, buf, f_big, GRect(head_x, top + 12, head_w, 46),
-                       GTextOverflowModeTrailingEllipsis, head_align, NULL);
-
-    const bool engaged = ap_engaged(state->autopilot_state);
-    const GRect sq_r = GRect(sq_x, sq_y, sq, sq);
-    graphics_context_set_fill_color(ctx, engaged ? GColorGreen : GColorDarkGray);
-    graphics_fill_rect(ctx, sq_r, 6, GCornersAll);
-    graphics_context_set_stroke_color(ctx, GColorWhite);
-    graphics_draw_round_rect(ctx, sq_r, 6);
-    graphics_context_set_text_color(ctx, engaged ? GColorBlack : GColorWhite);
-    // Engaged: large mode initial (A/W/R). Off: "OFF" in a font that fits the box.
-    graphics_draw_text(ctx, ap_box_text(state->autopilot_state),
-                       engaged ? f_med : f_small,
-                       GRect(sq_x, sq_y + (engaged ? 5 : 8), sq, 30),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
-    // ---- Wind section: "WIND" title over the dial (direction) + speed ------
-    const int wind_title_y = top + PBL_IF_ROUND_ELSE(64, 62);
-    graphics_context_set_text_color(ctx, GColorWhite);
-    draw_row(ctx, "WIND", f_small, wind_title_y, 18, w);
-
-    const int radius = PBL_IF_ROUND_ELSE(44, 40);
-    const int cx = PBL_IF_ROUND_ELSE(w / 2 - 34, 8 + radius + 4);
-    const int cy = wind_title_y + 22 + radius;
-    const GPoint center = GPoint(cx, cy);
-    graphics_context_set_stroke_color(ctx, GColorWhite);
-    graphics_draw_circle(ctx, center, radius);
-    graphics_draw_line(ctx, GPoint(center.x, center.y - radius),
-                       GPoint(center.x, center.y - radius + 8));
-    gpath_rotate_to(s_arrow, DEG_TO_TRIGANGLE(state->wind_angle));
-    gpath_move_to(s_arrow, center);
-    graphics_context_set_fill_color(ctx, GColorRed);
-    gpath_draw_filled(ctx, s_arrow);
-
-    // Wind speed beside the dial, unit next to the number.
-    const int wx = cx + radius + 8;
-    snprintf(buf, sizeof(buf), "%d.%d", state->wind_speed / 10, state->wind_speed % 10);
-    draw_value_unit(ctx, buf, "kn", f_speed, f_small, wx, cy - 18, w - wx - 2);
-
-    // ---- SOG: title above the number, unit beside it -----------------------
-    const int sog_title_y = cy + radius + PBL_IF_ROUND_ELSE(6, 2);
-    draw_row(ctx, "SOG", f_small, sog_title_y, 18, w);
-    snprintf(buf, sizeof(buf), "%d.%d", state->sog / 10, state->sog % 10);
-    draw_value_unit(ctx, buf, "kn", f_speed, f_small, 0, sog_title_y + 16, w);
+    draw_dashboard(ctx, state, w);
 
     // Transient feedback pill (button pressed / command acked).
     if (state->feedback[0]) {
@@ -207,7 +259,7 @@ static void canvas_update(Layer* layer, GContext* ctx) {
         graphics_context_set_fill_color(ctx, GColorBlue);
         graphics_fill_rect(ctx, pill, 6, GCornersAll);
         graphics_context_set_text_color(ctx, GColorWhite);
-        graphics_draw_text(ctx, state->feedback, f_small, GRect(pill.origin.x, pill.origin.y + 1, pill.size.w, pill.size.h),
+        graphics_draw_text(ctx, state->feedback, fonts_get_system_font(FONT_KEY_GOTHIC_18), GRect(pill.origin.x, pill.origin.y + 1, pill.size.w, pill.size.h),
                            GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     }
 }
@@ -227,8 +279,6 @@ static void window_unload(Window* window) {
 }
 
 void ui_init(void) {
-    s_arrow = gpath_create(&ARROW_POINTS);
-
     s_window = window_create();
     window_set_background_color(s_window, GColorBlack);
     window_set_click_config_provider(s_window, buttons_click_config_provider);
@@ -237,10 +287,12 @@ void ui_init(void) {
                                              .unload = window_unload,
                                          });
     window_stack_push(s_window, true);
+
+    tick_timer_service_subscribe(MINUTE_UNIT, tick_handler);
 }
 
 void ui_deinit(void) {
+    tick_timer_service_unsubscribe();
     if (s_feedback_timer) app_timer_cancel(s_feedback_timer);
     window_destroy(s_window);
-    gpath_destroy(s_arrow);
 }
