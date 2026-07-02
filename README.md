@@ -2,7 +2,11 @@
 
 A [SignalK](https://signalk.org/) app for Pebble. Monitor your boat from your wrist and control your autopilot.
 
-The watch shows boat **heading**, **autopilot status**, **speed over ground**, and **wind speed & direction**. The side buttons drive a [signalk-autopilot](https://github.com/SignalK/signalk-autopilot):
+| Autopilot off | Autopilot engaged |
+| :-----------: | :---------------: |
+| ![Watch dashboard with the autopilot off](docs/screenshot-disengaged.png) | ![Watch dashboard with the autopilot engaged](docs/screenshot-engaged.png) |
+
+The watch shows boat **heading**, **autopilot status**, **speed over ground**, and **wind speed & direction**. The whole screen turns green while the autopilot is engaged. The side buttons drive a [signalk-autopilot](https://github.com/SignalK/signalk-autopilot):
 
 | Button | Press        | Action                            |
 | ------ | ------------ | --------------------------------- |
