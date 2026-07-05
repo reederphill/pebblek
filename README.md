@@ -4,6 +4,8 @@
 
 A [SignalK](https://signalk.org/) app for Pebble. Monitor your boat from your wrist and control your autopilot.
 
+Install it from the Pebble App Store: [https://apps.repebble.com/bef8e6181d804c4aaa40c482](https://apps.repebble.com/bef8e6181d804c4aaa40c482)
+
 | Autopilot off | Autopilot engaged |
 | :-----------: | :---------------: |
 | ![Watch dashboard with the autopilot off](resources/images/screenshot-disengaged.png) | ![Watch dashboard with the autopilot engaged](resources/images/screenshot-engaged.png) |
