@@ -1,6 +1,6 @@
-# pebblek
+# PebbleK
 
-![pebblek — SignalK on your wrist](resources/images/banner.png)
+![PebbleK — SignalK on your wrist](resources/images/banner.png)
 
 A [SignalK](https://signalk.org/) app for Pebble. Monitor your boat from your wrist and control your autopilot.
 
