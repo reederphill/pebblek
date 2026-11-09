@@ -17,7 +17,10 @@ typedef struct {
     int sog;              // tenths of a knot
     int wind_speed;       // tenths of a knot
     int wind_angle;       // degrees 0..359, apparent, 0 = bow
+    int target_heading;   // degrees 0..359, or TARGET_NONE
+    int target_wind;      // degrees 0..359, apparent, 0 = bow, or TARGET_NONE
     int conn;             // ConnStatus
+    bool holding;         // an UP/DOWN hold is auto-repeating heading steps
     char feedback[16];    // transient button/ack feedback, empty when none
 } AppState;
 

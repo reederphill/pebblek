@@ -106,18 +106,56 @@ static int value_unit_width(const char* value, const char* unit, GFont vf, GFont
     return text_width(value, vf) + 4 + text_width(unit, uf);
 }
 
-// Compact wind wheel: a circle with a small bow tick at the top, a small red
-// direction tip riding just inside the rim (pointing outward at the apparent-wind
-// angle), and the wind speed ("12.3 kn") centered inside the circle. Drawn in the
-// foreground color (fg) so it stays legible on both the black and green
-// backgrounds.
-static void draw_wind_wheel(GContext* ctx, int cx, int cy, int radius, int wind_angle,
-                            int wind_speed, GFont f_val, GFont f_unit, GColor fg) {
+// Wrap degrees into -179..180 (negative = port / left of the bow).
+static int wrap180(int deg) {
+    deg = ((deg % 360) + 360) % 360;
+    return deg > 180 ? deg - 360 : deg;
+}
+
+// Apparent wind angle as side + magnitude: "S45°", "P120°", or "0°" / "180°".
+static void format_wind_angle(char* buf, size_t n, int angle) {
+    const int a = wrap180(angle);
+    const int mag = a < 0 ? -a : a;
+    if (mag == 0 || mag == 180) {
+        snprintf(buf, n, "%d°", mag);
+    } else {
+        snprintf(buf, n, "%c%d°", a < 0 ? 'P' : 'S', mag);
+    }
+}
+
+// Point on a circle of radius r around center at angle deg (0 = up, clockwise).
+static GPoint polar(GPoint center, int r, int deg) {
+    const int32_t a = DEG_TO_TRIGANGLE(deg);
+    return GPoint(center.x + sin_lookup(a) * r / TRIG_MAX_RATIO,
+                  center.y - cos_lookup(a) * r / TRIG_MAX_RATIO);
+}
+
+/*
+ * Compact wind wheel: a circle with a small bow tick at the top and a red
+ * direction tip riding just inside the rim at the apparent-wind angle. Inside:
+ * the apparent wind angle as a number ("S45°") and the wind speed below it.
+ *
+ * When the autopilot has a target, a ring on the rim marks it (relative to the
+ * bow): in AUTO the target heading, in WIND the target wind angle. On target, the
+ * red tip sits inside the ring (in WIND mode; in AUTO the ring sits on the bow).
+ * fg is the foreground color, bg the background (for the ring's hollow).
+ */
+static void draw_wind_wheel(GContext* ctx, int cx, int cy, int radius, const AppState* state,
+                            int target_rel, GColor fg, GColor bg) {
     const GPoint center = GPoint(cx, cy);
     graphics_context_set_stroke_color(ctx, fg);
     graphics_draw_circle(ctx, center, radius);
     graphics_draw_line(ctx, GPoint(center.x, center.y - radius),
                        GPoint(center.x, center.y - radius + 6));
+
+    // Target ring on the rim.
+    if (target_rel != TARGET_NONE) {
+        const GPoint p = polar(center, radius, target_rel);
+        graphics_context_set_fill_color(ctx, fg);
+        graphics_fill_circle(ctx, p, 7);
+        graphics_context_set_fill_color(ctx, bg);
+        graphics_fill_circle(ctx, p, 4);
+    }
 
     // Just the arrow tip, near the rim. Built per-frame so it tracks the radius.
     const int tip = radius - 1;
@@ -125,24 +163,59 @@ static void draw_wind_wheel(GContext* ctx, int cx, int cy, int radius, int wind_
     GPoint pts[3] = {{0, -tip}, {6, -base}, {-6, -base}};
     GPathInfo info = {.num_points = 3, .points = pts};
     GPath* arrow = gpath_create(&info);
-    gpath_rotate_to(arrow, DEG_TO_TRIGANGLE(wind_angle));
+    gpath_rotate_to(arrow, DEG_TO_TRIGANGLE(state->wind_angle));
     gpath_move_to(arrow, center);
     graphics_context_set_fill_color(ctx, GColorRed);
     gpath_draw_filled(ctx, arrow);
     gpath_destroy(arrow);
 
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%d.%d", wind_speed / 10, wind_speed % 10);
+    // Apparent wind angle (big) over wind speed (smaller).
+    char abuf[12], sbuf[28];
+    format_wind_angle(abuf, sizeof(abuf), state->wind_angle);
+    snprintf(sbuf, sizeof(sbuf), "%d.%d kn", state->wind_speed / 10, state->wind_speed % 10);
     graphics_context_set_text_color(ctx, fg);
-    draw_value_unit(ctx, buf, "kn", f_val, f_unit, cx - radius, cy - 20, 2 * radius, false);
+    graphics_draw_text(ctx, abuf, fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+                       GRect(cx - radius, cy - 30, 2 * radius, 32),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    graphics_draw_text(ctx, sbuf, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
+                       GRect(cx - radius, cy + 2, 2 * radius, 22),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+
+// The "desired" readout under the top row, mode-aware. Writes the text into buf
+// (empty when there's no target) and returns the target's angle relative to the
+// bow for the wheel ring, or TARGET_NONE.
+//   AUTO: "SET 145°  +4°"  target heading, and how far off it we are (+ = the
+//                          target is to starboard)
+//   WIND: "SET AWA S40°"   target apparent wind angle
+static int target_readout(const AppState* state, char* buf, size_t n) {
+    buf[0] = '\0';
+    if (state->autopilot_state == AP_STATE_AUTO && state->target_heading != TARGET_NONE) {
+        const int err = wrap180(state->target_heading - state->heading);
+        if (err == 0) {
+            snprintf(buf, n, "SET %d°", state->target_heading);
+        } else {
+            snprintf(buf, n, "SET %d°  %s%d°", state->target_heading, err > 0 ? "+" : "-",
+                     err > 0 ? err : -err);
+        }
+        return err;
+    }
+    if (state->autopilot_state == AP_STATE_WIND && state->target_wind != TARGET_NONE) {
+        char abuf[12];
+        format_wind_angle(abuf, sizeof(abuf), state->target_wind);
+        snprintf(buf, n, "SET AWA %s", abuf);
+        return state->target_wind;
+    }
+    return TARGET_NONE;
 }
 
 /*
  * Connected dashboard. HDG and SOG sit side by side as a centered top row (big
- * numbers with small °/kn units), and the wind wheel — a small red direction tip
- * near the rim plus the wind speed inside — is centered below. The autopilot
+ * numbers with small °/kn units). When the autopilot is engaged, the target
+ * ("desired") readout sits under it. The wind wheel — red direction tip, target
+ * ring, and apparent wind angle + speed inside — is centered below. The autopilot
  * status is not drawn here: it lives in the header (canvas_update) and tints the
- * whole background (green when engaged, black when off), passed in as fg.
+ * whole background (green when engaged, black when off), passed in as fg/bg.
  *
  *   Both shapes (emery / gabbro)
  *   .----------------------------.
@@ -150,20 +223,18 @@ static void draw_wind_wheel(GContext* ctx, int cx, int cy, int radius, int wind_
  *   |----------------------------|  <- divider
  *   |     HDG          SOG       |
  *   |     142°        6.4 kn     |
- *   |            WIND            |
- *   |          _.-^-._          |
- *   |         ( 12.3 kn )        |
- *   |          "-.__.-"         |
+ *   |       SET 145°  +3°        |  <- target (AUTO / WIND only)
+ *   |          _.-o-._          |  <- o = target ring
+ *   |         (  S45°  )        |
+ *   |          "12.3kn"         |
  *   '----------------------------'
- *
- * Emery just uses a slightly smaller wheel to fit its narrower screen (on round
- * the corners would clip a wider layout anyway).
  */
-static void draw_dashboard(GContext* ctx, const AppState* state, int w, GColor fg) {
-    char hbuf[16], sbuf[16];
+static void draw_dashboard(GContext* ctx, const AppState* state, int w, GColor fg, GColor bg) {
+    char hbuf[16], sbuf[16], tbuf[24];
     GFont f_num = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK);  // all values
     GFont f_unit = fonts_get_system_font(FONT_KEY_GOTHIC_18);       // °/kn units
-    GFont f_title = fonts_get_system_font(FONT_KEY_GOTHIC_14);      // HDG/SOG/WIND titles
+    GFont f_title = fonts_get_system_font(FONT_KEY_GOTHIC_14);      // HDG/SOG titles
+    GFont f_target = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
 
     // ---- Top row: HDG | SOG, each sized to its content, centered as a pair. --
     snprintf(hbuf, sizeof(hbuf), "%d", state->heading);
@@ -172,8 +243,8 @@ static void draw_dashboard(GContext* ctx, const AppState* state, int w, GColor f
     const int sw = value_unit_width(sbuf, "kn", f_num, f_unit);
     const int sep = PBL_IF_ROUND_ELSE(28, 20);
     const int gx = (w - (hw + sep + sw)) / 2;
-    const int row_top = PBL_IF_ROUND_ELSE(54, 40);
-    const int num_y = row_top + 16;
+    const int row_top = PBL_IF_ROUND_ELSE(50, 36);
+    const int num_y = row_top + 14;
 
     graphics_context_set_text_color(ctx, fg);
     graphics_draw_text(ctx, "HDG", f_title, GRect(gx, row_top, hw, 16),
@@ -185,14 +256,15 @@ static void draw_dashboard(GContext* ctx, const AppState* state, int w, GColor f
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     draw_value_unit(ctx, sbuf, "kn", f_num, f_unit, sog_x, num_y, sw, false);
 
-    // ---- Wind section: a single centered wheel with the speed inside -------
-    const int wind_title_y = num_y + 40;
-    graphics_context_set_text_color(ctx, fg);
-    draw_row(ctx, "WIND", f_title, wind_title_y, 18, w);
+    // ---- Target ("desired") readout -----------------------------------------
+    const int target_y = num_y + 32;
+    const int target_rel = target_readout(state, tbuf, sizeof(tbuf));
+    if (tbuf[0]) draw_row(ctx, tbuf, f_target, target_y, 22, w);
 
+    // ---- Wind wheel ----------------------------------------------------------
     const int radius = PBL_IF_ROUND_ELSE(46, 44);
-    const int cy = wind_title_y + 20 + radius;
-    draw_wind_wheel(ctx, w / 2, cy, radius, state->wind_angle, state->wind_speed, f_num, f_unit, fg);
+    const int cy = target_y + 30 + radius;
+    draw_wind_wheel(ctx, w / 2, cy, radius, state, target_rel, fg, bg);
 }
 
 static void canvas_update(Layer* layer, GContext* ctx) {
@@ -235,7 +307,7 @@ static void canvas_update(Layer* layer, GContext* ctx) {
         return;
     }
 
-    draw_dashboard(ctx, state, w, fg);
+    draw_dashboard(ctx, state, w, fg, bg);
 
     // Transient feedback pill (button pressed / command acked).
     if (state->feedback[0]) {

@@ -10,15 +10,27 @@ Install it from the Pebble App Store: [https://apps.repebble.com/bef8e6181d804c4
 | :-----------: | :---------------: |
 | ![Watch dashboard with the autopilot off](resources/images/screenshot-disengaged.png) | ![Watch dashboard with the autopilot engaged](resources/images/screenshot-engaged.png) |
 
-The watch shows boat **heading**, **autopilot status**, **speed over ground**, and **wind speed & direction**. The whole screen turns green while the autopilot is engaged. The side buttons drive a [signalk-autopilot](https://github.com/SignalK/signalk-autopilot):
+The watch shows boat **heading**, **autopilot status**, **speed over ground**, and **wind speed & apparent wind angle** (e.g. `S45°` = 45° to starboard, `P120°` = 120° to port). The whole screen turns green while the autopilot is engaged.
 
-| Button | Press        | Action                            |
-| ------ | ------------ | --------------------------------- |
-| Up     | short / long | adjust heading **+1°** / **+10°** |
-| Down   | short / long | adjust heading **−1°** / **−10°** |
-| Select | press        | engage / disengage autopilot      |
+While engaged, the autopilot's **target** is shown under the heading — desired vs actual:
 
-Each command gives a haptic confirmation: a short buzz on success, a long buzz on failure.
+- **AUTO:** `SET 145°  +4°` — the target heading, and how far off it you are (`+` = target is to starboard).
+- **WIND:** `SET AWA S40°` — the target apparent wind angle.
+
+A ring on the wind wheel's rim also marks the target relative to the bow; in WIND mode the red wind tip sits inside the ring when on target.
+
+The side buttons drive a [signalk-autopilot](https://github.com/SignalK/signalk-autopilot):
+
+| Button | Press  | Action                                                        |
+| ------ | ------ | ------------------------------------------------------------- |
+| Up     | short  | adjust heading **+1°**                                        |
+| Up     | hold   | **+10°**, repeating every 0.4 s while held (running total shown) |
+| Down   | short  | adjust heading **−1°**                                        |
+| Down   | hold   | **−10°**, repeating every 0.4 s while held (running total shown) |
+| Select | short  | engage AUTO / disengage                                       |
+| Select | long   | engage WIND / disengage                                       |
+
+Each hold step gives a tiny tick buzz so you can count steps without looking (e.g. hold for 9 ticks ≈ 90°). Commands give a haptic confirmation: a short buzz on success, a long buzz on failure.
 
 ## How it works
 

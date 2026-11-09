@@ -13,7 +13,11 @@
  *   WIND_SPEED         apparent wind speed, tenths of a knot (knots * 10)
  *   WIND_ANGLE         degrees 0..359, apparent, relative to the bow (0 = ahead)
  *   CONNECTION_STATUS  one of ConnStatus
- *   CMD_ADJUST_HEADING relative degrees: +1, +10, -1, -10  (watch -> phone)
+ *   TARGET_HEADING     autopilot target heading, degrees 0..359, or TARGET_NONE
+ *   TARGET_WIND_ANGLE  autopilot target apparent wind angle, degrees 0..359
+ *                      relative to the bow, or TARGET_NONE
+ *   CMD_ADJUST_HEADING relative degrees: +1/-1, or a multiple of 10 (a held
+ *                      button's repeated ±10 steps, coalesced) (watch -> phone)
  *   CMD_SET_STATE      target ApState to engage/disengage   (watch -> phone)
  *   CMD_RESULT         one of CmdResult                     (phone -> watch)
  */
@@ -21,6 +25,7 @@
 #pragma once
 
 #define SPEED_SCALE 10  // telemetry speeds are sent in tenths of a knot
+#define TARGET_NONE (-1) // TARGET_HEADING / TARGET_WIND_ANGLE: no target known
 
 typedef enum {
     AP_STATE_STANDBY = 0,

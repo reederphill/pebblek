@@ -74,7 +74,7 @@ Watch ↔ phone messaging is **AppMessage**, keyed by the names in `package.json
 
 ## The AppMessage contract
 
-`src/pkjs/protocol.js` (phone) and `src/c/protocol.h` (watch) are **mirrors** — keep their enum values (`AP_STATE`/`ApState`, `CONN`/`ConnStatus`, `CMD_RESULT`/`CmdResult`) and encoding identical. Encoding (all values are ints): heading & wind-angle = degrees 0..359; SOG & wind-speed = tenths of a knot (`SPEED_SCALE` = 10); autopilot state & connection status = enums. Commands (watch→phone): `CMD_ADJUST_HEADING` carries relative degrees (±1/±10); `CMD_TOGGLE_ENGAGE` = 1. Ack (phone→watch): `CMD_RESULT`.
+`src/pkjs/protocol.js` (phone) and `src/c/protocol.h` (watch) are **mirrors** — keep their enum values (`AP_STATE`/`ApState`, `CONN`/`ConnStatus`, `CMD_RESULT`/`CmdResult`) and encoding identical. Encoding (all values are ints): heading & wind-angle = degrees 0..359; SOG & wind-speed = tenths of a knot (`SPEED_SCALE` = 10); autopilot state & connection status = enums. Autopilot targets (phone→watch): `TARGET_HEADING` / `TARGET_WIND_ANGLE` in degrees 0..359, or `TARGET_NONE` (-1) when SignalK reports null. Commands (watch→phone): `CMD_ADJUST_HEADING` carries relative degrees (±1, or a multiple of 10 — `comm.c` queues commands behind the one-in-flight AppMessage and sums deltas from a held button); `CMD_TOGGLE_ENGAGE` = 1. Ack (phone→watch): `CMD_RESULT`.
 
 ## Gotchas
 

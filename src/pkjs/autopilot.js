@@ -57,7 +57,8 @@ function put(path, bodyObj, label) {
   });
 }
 
-// Nudge the target heading by a relative number of degrees (+1/+10/-1/-10).
+// Nudge the target heading by a relative number of degrees (+1/-1, or a
+// multiple of 10 when the watch coalesces a held button's repeated steps).
 //
 // TODO(hardware): verify whether the signalk-autopilot plugin expects the
 // adjustHeading value in DEGREES or RADIANS. The plugin README implies degrees,

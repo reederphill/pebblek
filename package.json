@@ -28,7 +28,9 @@
       "CONNECTION_STATUS",
       "CMD_ADJUST_HEADING",
       "CMD_SET_STATE",
-      "CMD_RESULT"
+      "CMD_RESULT",
+      "TARGET_HEADING",
+      "TARGET_WIND_ANGLE"
     ],
     "resources": {
       "media": [

@@ -9,6 +9,7 @@
  *   HEADING / WIND_ANGLE: integer degrees 0..359
  *   SOG / WIND_SPEED:     tenths of a knot (knots * SPEED_SCALE)
  *   AUTOPILOT_STATE:      AP_STATE int
+ *   TARGET_HEADING / TARGET_WIND_ANGLE: integer degrees 0..359, or TARGET_NONE
  */
 
 var protocol = require("./protocol");
@@ -17,6 +18,7 @@ var outbox = require("./outbox");
 var AP_STATE = protocol.AP_STATE;
 var AP_STATE_FROM_STRING = protocol.AP_STATE_FROM_STRING;
 var SPEED_SCALE = protocol.SPEED_SCALE;
+var TARGET_NONE = protocol.TARGET_NONE;
 
 var MS_TO_KNOTS = 1.943844;
 var RAD_TO_DEG = 180 / Math.PI;
@@ -28,7 +30,16 @@ var PATHS = [
   "environment.wind.speedApparent",
   "environment.wind.angleApparent",
   "steering.autopilot.state",
+  "steering.autopilot.target.headingMagnetic",
+  "steering.autopilot.target.windAngleApparent",
 ];
+
+// Autopilot target paths: a null value means "no target", which we relay as
+// TARGET_NONE rather than ignoring (so the watch hides a stale target).
+var TARGET_KEYS = {
+  "steering.autopilot.target.headingMagnetic": "TARGET_HEADING",
+  "steering.autopilot.target.windAngleApparent": "TARGET_WIND_ANGLE",
+};
 
 // The subscription object to send once the stream is open.
 function subscription() {
@@ -92,6 +103,10 @@ function applyValue(path, value) {
         outbox.set("AUTOPILOT_STATE", ap);
       }
       break;
+    case "steering.autopilot.target.headingMagnetic":
+    case "steering.autopilot.target.windAngleApparent":
+      outbox.set(TARGET_KEYS[path], isNum(value) ? radToDeg360(value) : TARGET_NONE);
+      break;
     default:
       break; // ignore unknown paths
   }
@@ -110,7 +125,10 @@ function handleMessage(msg) {
     }
     for (var j = 0; j < values.length; j++) {
       var v = values[j];
-      if (v && v.path !== undefined && v.value !== undefined && v.value !== null) {
+      if (!v || v.path === undefined || v.value === undefined) {
+        continue;
+      }
+      if (v.value !== null || TARGET_KEYS[v.path]) {
         applyValue(v.path, v.value);
       }
     }

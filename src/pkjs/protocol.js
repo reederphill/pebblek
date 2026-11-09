@@ -19,9 +19,14 @@
  *     WIND_SPEED         int   apparent wind speed, tenths of a knot (knots * 10)
  *     WIND_ANGLE         int   degrees 0..359, apparent, relative to the bow (0 = ahead)
  *     CONNECTION_STATUS  int   one of CONN.*
+ *     TARGET_HEADING     int   autopilot target heading, degrees 0..359 magnetic,
+ *                              or TARGET_NONE when the pilot reports no target
+ *     TARGET_WIND_ANGLE  int   autopilot target apparent wind angle, degrees
+ *                              0..359 relative to the bow, or TARGET_NONE
  *
  *   Watch -> phone (commands):
- *     CMD_ADJUST_HEADING int   relative degrees: +1, +10, -1, -10
+ *     CMD_ADJUST_HEADING int   relative degrees: +1/-1, or any multiple of 10
+ *                              (a held button coalesces repeated ±10 steps)
  *     CMD_SET_STATE      int   target AP_STATE.* to switch the autopilot to
  *                              (STANDBY = disengage, AUTO/WIND = engage)
  *
@@ -70,6 +75,9 @@ var CMD_RESULT = {
   FAILED: 1,
 };
 
+// Sentinel for TARGET_HEADING / TARGET_WIND_ANGLE: no target known.
+var TARGET_NONE = -1;
+
 // Scaling factor for speeds sent over AppMessage (tenths of a knot).
 var SPEED_SCALE = 10;
 
@@ -80,4 +88,5 @@ module.exports = {
   CONN: CONN,
   CMD_RESULT: CMD_RESULT,
   SPEED_SCALE: SPEED_SCALE,
+  TARGET_NONE: TARGET_NONE,
 };
