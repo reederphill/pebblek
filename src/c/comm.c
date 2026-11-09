@@ -2,6 +2,7 @@
 
 #include "protocol.h"
 #include "state.h"
+#include "target.h"
 #include "ui.h"
 
 // ---- helpers --------------------------------------------------------------
@@ -87,11 +88,17 @@ static void inbox_received(DictionaryIterator* iter, void* context) {
     if ((t = dict_find(iter, MESSAGE_KEY_WIND_SPEED))) state->wind_speed = read_int(t);
     if ((t = dict_find(iter, MESSAGE_KEY_WIND_ANGLE))) state->wind_angle = read_int(t);
     if ((t = dict_find(iter, MESSAGE_KEY_CONNECTION_STATUS))) state->conn = read_int(t);
-    if ((t = dict_find(iter, MESSAGE_KEY_TARGET_HEADING))) state->target_heading = read_int(t);
-    if ((t = dict_find(iter, MESSAGE_KEY_TARGET_WIND_ANGLE))) state->target_wind = read_int(t);
+    target_on_mode(state->autopilot_state);
+    if ((t = dict_find(iter, MESSAGE_KEY_TARGET_HEADING))) target_on_server(AP_STATE_AUTO, read_int(t));
+    if ((t = dict_find(iter, MESSAGE_KEY_TARGET_WIND_ANGLE))) target_on_server(AP_STATE_WIND, read_int(t));
 
     if ((t = dict_find(iter, MESSAGE_KEY_CMD_RESULT))) {
         bool ok = (read_int(t) == CMD_RESULT_OK);
+        // A failure with an optimistic target pending reverts it and alerts.
+        if (!ok && target_on_failure()) {
+            ui_mark_dirty();
+            return;
+        }
         // While a button is held the pill shows the running total and each step
         // already ticks, so don't interrupt it with per-step OK acks.
         if (ok && state->holding) {
@@ -117,8 +124,10 @@ static void inbox_dropped(AppMessageResult reason, void* context) {
 static void outbox_failed(DictionaryIterator* iter, AppMessageResult reason, void* context) {
     APP_LOG(APP_LOG_LEVEL_WARNING, "outbox failed: %d", reason);
     s_in_flight = false;
-    ui_set_feedback("NOT SENT");
-    vibes_long_pulse();
+    if (!target_on_failure()) {
+        ui_set_feedback("NOT SENT");
+        vibes_long_pulse();
+    }
     flush();
 }
 

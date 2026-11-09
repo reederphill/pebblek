@@ -78,6 +78,8 @@ Watch ↔ phone messaging is **AppMessage**, keyed by the names in `package.json
 
 ## Gotchas
 
+- **Optimistic targets (`src/c/target.c`).** Heading nudges update the displayed target immediately; incoming `TARGET_*` telemetry is ignored until it matches (±1°), or reverted with an alert on `CMD_RESULT` FAILED / 5 s timeout. The phone keeps a coalesced FAILED sticky (`autopilot.js` `sendResult`) so a later OK can't hide it. `WIND_ADJUST_SIGN` (which way a nudge moves the target wind angle) matches the mock and is unverified on real hardware.
+
 - **`MESSAGE_KEY_*` are runtime `extern uint32_t` variables, not `#define` constants** (see `build/include/message_keys.auto.h`). Use them as `dict_find`/`dict_write_int` arguments only — they can't appear in a C `switch`/`case`.
 - **`@rebble/clay`** (installed via `pebble package install`, not npm) provides the phone settings page. The legacy npm `pebble-clay` doesn't support gabbro and breaks the build.
 - PebbleKit JS `sendAppMessage` packs integers into the smallest int width that fits; the C `read_int()` helper in `main.c` reads any width. Don't assume int32.

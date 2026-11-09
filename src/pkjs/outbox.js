@@ -35,6 +35,11 @@ Outbox.prototype.set = function (key, value) {
   this._schedule();
 };
 
+// The value queued for a key but not yet sent (undefined if none).
+Outbox.prototype.peek = function (key) {
+  return this._pending[key];
+};
+
 // Queue several keys at once (object of key -> value).
 Outbox.prototype.setAll = function (dict) {
   for (var k in dict) {

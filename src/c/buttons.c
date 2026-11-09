@@ -3,6 +3,7 @@
 #include "comm.h"
 #include "protocol.h"
 #include "state.h"
+#include "target.h"
 #include "ui.h"
 
 // Holding UP/DOWN past the long-press delay steps the heading by HOLD_STEP and
@@ -14,14 +15,9 @@ static AppTimer* s_hold_timer;
 static int s_hold_dir;    // +1 (UP) or -1 (DOWN) while holding
 static int s_hold_total;  // degrees sent so far in the current hold
 
-// Send a heading nudge. In AUTO the target heading is updated optimistically so
-// the SET readout responds instantly; the phone's telemetry corrects it.
+// Send a heading nudge; the displayed target updates optimistically (target.c).
 static void adjust(int delta) {
-    AppState* state = app_state();
-    if (state->autopilot_state == AP_STATE_AUTO && state->target_heading != TARGET_NONE) {
-        state->target_heading = ((state->target_heading + delta) % 360 + 360) % 360;
-    }
-    comm_adjust_heading(delta);
+    target_adjust(delta);
 }
 
 static void show_delta(int delta) {

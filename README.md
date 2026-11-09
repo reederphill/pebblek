@@ -17,6 +17,8 @@ While engaged, the autopilot's **target** is shown under the heading — desired
 - **AUTO:** `SET 145°  +4°` — the target heading, and how far off it you are (`+` = target is to starboard).
 - **WIND:** `SET AWA S40°` — the target apparent wind angle.
 
+Course changes are shown immediately and assumed to succeed: the SET readout holds the new target while the autopilot catches up. If the autopilot rejects the change, or doesn't report the new target within 5 s, the watch buzzes long, shows **FAILED** / **REVERTED**, and goes back to the autopilot's actual target.
+
 A ring on the wind wheel's rim also marks the target relative to the bow; in WIND mode the red wind tip sits inside the ring when on target.
 
 The side buttons drive a [signalk-autopilot](https://github.com/SignalK/signalk-autopilot):

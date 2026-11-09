@@ -29,7 +29,13 @@ var protocol = require("./protocol");
 var AP_STATE_TO_STRING = protocol.AP_STATE_TO_STRING;
 var CMD_RESULT = protocol.CMD_RESULT;
 
+// Results are coalesced in the outbox, so several commands answered within one
+// flush send a single CMD_RESULT. A failure must not be hidden by a later
+// success: the watch reverts its optimistic target on FAILED.
 function sendResult(ok) {
+  if (ok && outbox.peek("CMD_RESULT") === CMD_RESULT.FAILED) {
+    return;
+  }
   outbox.set("CMD_RESULT", ok ? CMD_RESULT.OK : CMD_RESULT.FAILED);
 }
 
