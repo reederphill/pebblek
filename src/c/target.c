@@ -1,6 +1,5 @@
 #include "target.h"
 
-#include "comm.h"
 #include "protocol.h"
 #include "state.h"
 #include "ui.h"
@@ -69,7 +68,7 @@ static void confirm_timeout(void* data) {
     revert("REVERTED");
 }
 
-void target_adjust(int delta) {
+void target_on_adjust_sent(int delta) {
     const int mode = app_state()->autopilot_state;
     if (mode == AP_STATE_AUTO || mode == AP_STATE_WIND) {
         if (s_pending_mode != -1 && s_pending_mode != mode) clear_pending();
@@ -82,14 +81,15 @@ void target_adjust(int delta) {
             ui_mark_dirty();
         }
     }
-    comm_adjust_heading(delta);
 }
 
 void target_on_server(int mode, int value) {
+    const int previous = *server(mode);
     *server(mode) = value;
+    if (value == TARGET_NONE && s_pending_mode == mode) clear_pending();
     if (s_pending_mode == mode) {
         // Still waiting: ignore stale values, confirm on the expected one.
-        if (value != TARGET_NONE && matches(value, *displayed(mode))) {
+        if (value == *displayed(mode) || (value != previous && matches(value, *displayed(mode)))) {
             *displayed(mode) = value;
             if (s_timer) {
                 app_timer_cancel(s_timer);

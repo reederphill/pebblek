@@ -6,9 +6,10 @@
  * commands into autopilot REST calls. This file only wires up the on-watch
  * pieces; each lives in its own module:
  *   - state   — the shared AppState the dashboard renders
- *   - ui      — window, dashboard rendering, transient feedback
+ *   - ui      — window, dashboard rendering
  *   - comm    — AppMessage in (telemetry/acks) and out (commands)
  *   - buttons — side-button -> autopilot command mapping
+ *   - dial    — touch drag to dial in a larger change, SELECT to send
  *
  * The AppMessage value encoding is shared with the phone via protocol.h /
  * src/common/protocol.js.
@@ -17,14 +18,20 @@
 #include <pebble.h>
 
 #include "comm.h"
+#include "buttons.h"
+#include "dial.h"
 #include "ui.h"
 
 static void init(void) {
     ui_init();
     comm_init();
+    dial_init();
 }
 
 static void deinit(void) {
+    buttons_cancel();
+    dial_deinit();
+    comm_deinit();
     ui_deinit();
 }
 

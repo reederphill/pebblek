@@ -24,6 +24,13 @@
 
 #pragma once
 
+// Every telemetry value has a matching <KEY>_TIME: source Unix seconds, or 0
+// when unavailable. Values expire independently after TELEMETRY_STALE_SECONDS.
+// STW / TRUE_WIND_SPEED are tenths of knots; TRUE_WIND_ANGLE is relative to
+// the bow, water-referenced, degrees 0..359. Missing numeric values are -1.
+#define TELEMETRY_STALE_SECONDS 10
+#define DATA_NONE (-1)
+
 #define SPEED_SCALE 10  // telemetry speeds are sent in tenths of a knot
 #define TARGET_NONE (-1) // TARGET_HEADING / TARGET_WIND_ANGLE: no target known
 

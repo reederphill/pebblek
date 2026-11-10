@@ -18,7 +18,9 @@ out = 'build'
 # across reinstalls, plus a pre-minted device token so no manual approval is
 # needed on each emulator launch. Without SIGNALK_MOCKUP the three fields are
 # empty => normal user-configured behaviour (the production build).
-DEV_SERVER = 'http://localhost:3000'
+# PEBBLEK_DEV_SERVER overrides the address, e.g. the Mac's LAN IP when trialling on
+# a real watch (`make dev-phone`): the phone can't reach this machine's localhost.
+DEV_SERVER = os.environ.get('PEBBLEK_DEV_SERVER') or 'http://localhost:3000'
 DEV_DEVICE_UUID = '00000000-0000-0000-0000-000000000000'
 
 

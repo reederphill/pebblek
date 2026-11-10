@@ -6,7 +6,7 @@ PLATFORM ?= emery
 
 .DEFAULT_GOAL := build
 
-.PHONY: build up dev install-phone logs clean help
+.PHONY: build up down dev dev-phone install-phone logs clean help
 
 ## build: build for all targetPlatforms (emery, gabbro)
 build:
@@ -29,6 +29,18 @@ dev: up
 	pebble kill || true
 	SIGNALK_MOCKUP=true pebble build
 	SIGNALK_MOCKUP=true pebble install --emulator $(PLATFORM)
+
+## dev-phone: run on a real watch against the local mock SignalK server over the LAN.
+## Uses the phone app's Developer Connection via CloudPebble by default (needs
+## `pebble login`); pass PHONE_IP=10.0.0.x to connect directly instead.
+# The phone runs the pkjs side, so the baked server address must be this Mac's LAN
+# IP (override with LAN_IP=...), not localhost.
+LAN_IP ?= $(shell ipconfig getifaddr en0)
+PHONE_TARGET = $(if $(PHONE_IP),--phone $(PHONE_IP),--cloudpebble)
+dev-phone: up
+	@test -n "$(LAN_IP)" || (echo "no LAN IP found; pass LAN_IP=<this Mac's ip>"; exit 1)
+	SIGNALK_MOCKUP=true PEBBLEK_DEV_SERVER=http://$(LAN_IP):3000 pebble build
+	SIGNALK_MOCKUP=true PEBBLEK_DEV_SERVER=http://$(LAN_IP):3000 pebble install $(PHONE_TARGET)
 
 ## install-phone: install to a real Pebble device (requires a paired phone)
 install-phone: clean build

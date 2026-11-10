@@ -81,6 +81,12 @@ var TARGET_NONE = -1;
 // Scaling factor for speeds sent over AppMessage (tenths of a knot).
 var SPEED_SCALE = 10;
 
+// Mirrors protocol.h. Each value has a <KEY>_TIME in source Unix seconds;
+// 0 marks unavailable data. STW and TRUE_WIND_SPEED use SPEED_SCALE;
+// TRUE_WIND_ANGLE is water-referenced, relative to the bow, degrees 0..359.
+var TELEMETRY_STALE_SECONDS = 10;
+var DATA_NONE = -1;
+
 module.exports = {
   AP_STATE: AP_STATE,
   AP_STATE_TO_STRING: AP_STATE_TO_STRING,
@@ -89,4 +95,6 @@ module.exports = {
   CMD_RESULT: CMD_RESULT,
   SPEED_SCALE: SPEED_SCALE,
   TARGET_NONE: TARGET_NONE,
+  DATA_NONE: DATA_NONE,
+  TELEMETRY_STALE_SECONDS: TELEMETRY_STALE_SECONDS,
 };

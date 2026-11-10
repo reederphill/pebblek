@@ -14,6 +14,8 @@ var AccessRequester = require("./auth");
 var protocol = require("./protocol");
 var outbox = require("./outbox");
 var telemetry = require("./telemetry");
+var Alerts = require("./alerts");
+var alerts = new Alerts(function (event) { outbox.event(event); });
 var autopilot = require("./autopilot");
 
 var CONN = protocol.CONN;
@@ -26,6 +28,7 @@ var clay = new Clay(clayConfig, null, { autoHandleEvents: false });
 var requester = new AccessRequester();
 var authRetryTimer = null;
 var lastStatus = null;
+var connectionAttempt = 0;
 
 // Send a dictionary to the watch. Routed through the outbox so it respects the
 // one-AppMessage-in-flight rule and is coalesced with telemetry. messageKeys are
@@ -41,6 +44,10 @@ function reportStatus(status) {
     return;
   }
   lastStatus = status;
+  if (status !== CONN.CONNECTED) {
+    telemetry.reset();
+    alerts.close();
+  }
   console.log("pebblek: status=" + status);
   sendToWatch({ CONNECTION_STATUS: status });
 }
@@ -48,18 +55,25 @@ function reportStatus(status) {
 var client = new SignalKClient({
   onStatus: reportStatus,
   onOpen: function (c) {
-    // task 4: subscribe to the telemetry paths once the stream is open.
-    c.send(telemetry.subscription());
+    var sub = telemetry.subscription();
+    sub.subscribe.push(Alerts.subscription);
+    c.send(sub);
+    alerts.open(settings.loadAuth().token);
   },
   onMessage: function (msg) {
-    // task 4: parse deltas and relay telemetry to the watch via the outbox.
     telemetry.handleMessage(msg);
+    alerts.handleMessage(msg);
   },
 });
 
 // task 5: translate watch button commands into autopilot REST PUTs.
 Pebble.addEventListener("appmessage", function (e) {
-  autopilot.handleCommand(e && e.payload);
+  var payload = e && e.payload;
+  if (payload && payload.ALERT_RESYNC) {
+    alerts.replay();
+    if (lastStatus !== null) sendToWatch({ CONNECTION_STATUS: lastStatus });
+  }
+  autopilot.handleCommand(payload);
 });
 
 function clearAuthRetry() {
@@ -71,10 +85,12 @@ function clearAuthRetry() {
 
 // Entry point for (re)establishing everything based on current settings.
 function start() {
+  connectionAttempt++;
   clearAuthRetry();
   requester.cancel();
 
   var cfg = settings.loadConfig();
+  alerts.setServer(cfg.serverAddress);
   if (!cfg.serverAddress) {
     client.disconnect();
     reportStatus(CONN.NO_CONFIG);
@@ -118,7 +134,9 @@ function connectStream() {
   var token = settings.loadAuth().token;
   reportStatus(CONN.CONNECTING);
 
+  var attempt = connectionAttempt;
   requester.validateToken(cfg.serverAddress, token, function (ok, status) {
+    if (attempt !== connectionAttempt) return;
     if (ok) {
       client.configure(cfg.serverAddress, token);
     } else if (status === 401 || status === 403) {
@@ -158,6 +176,7 @@ Pebble.addEventListener("webviewclosed", function (e) {
   var cfg = settings.loadConfig();
   // A different server invalidates any token we hold for the old one.
   if (cfg.serverAddress !== previousServer) {
+    client.disconnect();
     settings.clearToken();
   }
   console.log("pebblek settings saved; server=" + cfg.serverAddress);

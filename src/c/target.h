@@ -13,9 +13,8 @@
 
 #include <pebble.h>
 
-// Send a relative heading adjustment, optimistically updating the displayed
-// target if the autopilot is engaged.
-void target_adjust(int delta);
+// Update the displayed target after submitting a relative adjustment.
+void target_on_adjust_sent(int delta);
 
 // A target value arrived from the phone. mode is AP_STATE_AUTO for
 // TARGET_HEADING, AP_STATE_WIND for TARGET_WIND_ANGLE.

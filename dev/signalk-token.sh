@@ -25,6 +25,11 @@ fi
 docker compose exec -T -e CLIENT_ID="$CLIENT_ID" signalk node -e '
   const jwt = require("/home/node/signalk/node_modules/jsonwebtoken");
   const fs = require("fs");
-  const cfg = JSON.parse(fs.readFileSync("/home/node/.signalk/security.json"));
-  process.stdout.write(jwt.sign({ device: process.env.CLIENT_ID }, cfg.secretKey));
+  const dir = "/home/node/.signalk/";
+  const cfg = JSON.parse(fs.readFileSync(dir + "security.json"));
+  // Newer signalk-server keeps the secret in security-secret.key; a secretKey in
+  // security.json (older servers) takes precedence, same as signalk-generate-token.
+  const secret = cfg.secretKey ||
+    fs.readFileSync(dir + "security-secret.key", "utf8").trim();
+  process.stdout.write(jwt.sign({ device: process.env.CLIENT_ID }, secret));
 '

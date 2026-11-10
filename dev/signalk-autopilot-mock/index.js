@@ -82,7 +82,7 @@ module.exports = function (app) {
 
   // Emit a SignalK delta from this plugin as the source.
   function emit(values) {
-    app.handleMessage(plugin.id, { updates: [{ values: values }] })
+    app.handleMessage(plugin.id, { updates: [{ timestamp: new Date().toISOString(), values: values }] })
   }
 
   // Publish the current autopilot state (and active target). Sent immediately on
@@ -210,11 +210,20 @@ module.exports = function (app) {
 
       // A touch of noise on speed/wind so the dashboard isn't dead still.
       const jitter = (base, amp) => base + (Math.random() - 0.5) * amp
+      const stw = jitter(4.6 * KNOT, 0.2 * KNOT)
+      const apparentSpeed = jitter(windSpeed, 0.5 * KNOT)
+      const apparentAngle = normPi(jitter(windAngle, 1 * DEG))
+      // Wind-from vector relative to the bow, using water speed (zero leeway).
+      const trueX = apparentSpeed * Math.cos(apparentAngle) - stw
+      const trueY = apparentSpeed * Math.sin(apparentAngle)
       emit([
+        { path: 'navigation.speedThroughWater', value: stw },
+        { path: 'environment.wind.speedTrue', value: Math.hypot(trueX, trueY) },
+        { path: 'environment.wind.angleTrueWater', value: Math.atan2(trueY, trueX) },
         { path: 'navigation.headingMagnetic', value: heading },
         { path: 'navigation.speedOverGround', value: jitter(sog, 0.3 * KNOT) },
-        { path: 'environment.wind.angleApparent', value: normPi(jitter(windAngle, 1 * DEG)) },
-        { path: 'environment.wind.speedApparent', value: jitter(windSpeed, 0.5 * KNOT) }
+        { path: 'environment.wind.angleApparent', value: apparentAngle },
+        { path: 'environment.wind.speedApparent', value: apparentSpeed }
       ])
     }
 

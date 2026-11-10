@@ -1,142 +1,82 @@
-/*
- * SignalK telemetry — phone side (task 4).
- *
- * Builds the stream subscription and parses incoming SignalK delta messages,
- * converting units into the integer-encoded AppMessage values defined in
- * src/pkjs/protocol.js, then queues them on the outbox for relay to the watch.
- *
- * SignalK units in: angles in RADIANS, speeds in m/s. We emit:
- *   HEADING / WIND_ANGLE: integer degrees 0..359
- *   SOG / WIND_SPEED:     tenths of a knot (knots * SPEED_SCALE)
- *   AUTOPILOT_STATE:      AP_STATE int
- *   TARGET_HEADING / TARGET_WIND_ANGLE: integer degrees 0..359, or TARGET_NONE
- */
-
+/* SignalK measurement timestamps travel with each reading so cached deltas and
+ * a stalled phone cannot leave live-looking instruments on the watch. */
 var protocol = require("./protocol");
 var outbox = require("./outbox");
-
-var AP_STATE = protocol.AP_STATE;
-var AP_STATE_FROM_STRING = protocol.AP_STATE_FROM_STRING;
-var SPEED_SCALE = protocol.SPEED_SCALE;
-var TARGET_NONE = protocol.TARGET_NONE;
-
 var MS_TO_KNOTS = 1.943844;
 var RAD_TO_DEG = 180 / Math.PI;
 
-// SignalK paths we subscribe to, at 1 Hz.
-var PATHS = [
-  "navigation.headingMagnetic",
-  "navigation.speedOverGround",
-  "environment.wind.speedApparent",
-  "environment.wind.angleApparent",
-  "steering.autopilot.state",
-  "steering.autopilot.target.headingMagnetic",
-  "steering.autopilot.target.windAngleApparent",
-];
-
-// Autopilot target paths: a null value means "no target", which we relay as
-// TARGET_NONE rather than ignoring (so the watch hides a stale target).
-var TARGET_KEYS = {
-  "steering.autopilot.target.headingMagnetic": "TARGET_HEADING",
-  "steering.autopilot.target.windAngleApparent": "TARGET_WIND_ANGLE",
+function angle(rad) {
+  return Math.round(((rad * RAD_TO_DEG) % 360 + 360) % 360) % 360;
+}
+function speed(ms) {
+  return ms >= 0 && ms < 1000 ? Math.round(ms * MS_TO_KNOTS * protocol.SPEED_SCALE) : -1;
+}
+function apState(value) {
+  var state = protocol.AP_STATE_FROM_STRING[value];
+  return typeof state === "number" ? state : protocol.AP_STATE.UNKNOWN;
+}
+var FIELDS = {
+  "navigation.headingMagnetic": ["HEADING", angle],
+  "navigation.speedOverGround": ["SOG", speed],
+  "navigation.speedThroughWater": ["STW", speed],
+  "environment.wind.speedApparent": ["WIND_SPEED", speed],
+  "environment.wind.angleApparent": ["WIND_ANGLE", angle],
+  "environment.wind.speedTrue": ["TRUE_WIND_SPEED", speed],
+  "environment.wind.angleTrueWater": ["TRUE_WIND_ANGLE", angle],
+  "steering.autopilot.state": ["AUTOPILOT_STATE", apState],
+  "steering.autopilot.target.headingMagnetic": ["TARGET_HEADING", angle],
+  "steering.autopilot.target.windAngleApparent": ["TARGET_WIND_ANGLE", angle],
 };
+var PATHS = Object.keys(FIELDS);
+var latest = {};
 
-// The subscription object to send once the stream is open.
 function subscription() {
-  var subs = [];
-  for (var i = 0; i < PATHS.length; i++) {
-    subs.push({ path: PATHS[i], period: 1000 });
-  }
-  return { context: "vessels.self", subscribe: subs };
+  return { context: "vessels.self", subscribe: PATHS.map(function (path) {
+    return { path: path, period: 1000 };
+  }) };
 }
 
-// Normalize any angle in radians to an integer 0..359 degrees. Handles negative
-// inputs (e.g. apparent wind angle reported as -PI..PI relative to the bow).
-function radToDeg360(rad) {
-  var deg = rad * RAD_TO_DEG;
-  deg = deg % 360;
-  if (deg < 0) {
-    deg += 360;
-  }
-  return Math.round(deg) % 360;
+function unavailable(field) {
+  outbox.set(field[0], field[0] === "AUTOPILOT_STATE" ? protocol.AP_STATE.UNKNOWN : protocol.DATA_NONE);
+  outbox.set(field[0] + "_TIME", 0);
 }
 
-// m/s -> tenths of a knot (integer).
-function msToKnotTenths(ms) {
-  return Math.round(ms * MS_TO_KNOTS * SPEED_SCALE);
+// On a connection/server change, remove pending readings as well as timestamps.
+function reset() {
+  latest = {};
+  PATHS.forEach(function (path) { unavailable(FIELDS[path]); });
 }
 
-function isNum(v) {
-  return typeof v === "number" && isFinite(v);
-}
-
-// Map a single SignalK { path, value } pair to a telemetry key/value, queueing
-// it on the outbox. Unknown paths and missing/null values are ignored.
-function applyValue(path, value) {
-  switch (path) {
-    case "navigation.headingMagnetic":
-      if (isNum(value)) {
-        outbox.set("HEADING", radToDeg360(value));
-      }
-      break;
-    case "environment.wind.angleApparent":
-      if (isNum(value)) {
-        outbox.set("WIND_ANGLE", radToDeg360(value));
-      }
-      break;
-    case "navigation.speedOverGround":
-      if (isNum(value)) {
-        outbox.set("SOG", msToKnotTenths(value));
-      }
-      break;
-    case "environment.wind.speedApparent":
-      if (isNum(value)) {
-        outbox.set("WIND_SPEED", msToKnotTenths(value));
-      }
-      break;
-    case "steering.autopilot.state":
-      if (typeof value === "string") {
-        var ap = AP_STATE_FROM_STRING[value];
-        if (ap === undefined) {
-          ap = AP_STATE.UNKNOWN;
-        }
-        outbox.set("AUTOPILOT_STATE", ap);
-      }
-      break;
-    case "steering.autopilot.target.headingMagnetic":
-    case "steering.autopilot.target.windAngleApparent":
-      outbox.set(TARGET_KEYS[path], isNum(value) ? radToDeg360(value) : TARGET_NONE);
-      break;
-    default:
-      break; // ignore unknown paths
-  }
-}
-
-// Parse a SignalK delta message and relay telemetry. Defensive about shape.
 function handleMessage(msg) {
-  if (!msg || !msg.updates || !msg.updates.length) {
-    return;
-  }
-  for (var i = 0; i < msg.updates.length; i++) {
-    var update = msg.updates[i];
-    var values = update && update.values;
-    if (!values || !values.length) {
-      continue;
-    }
-    for (var j = 0; j < values.length; j++) {
-      var v = values[j];
-      if (!v || v.path === undefined || v.value === undefined) {
-        continue;
+  if (!msg || !Array.isArray(msg.updates)) return;
+  var now = Date.now();
+  msg.updates.forEach(function (update) {
+    if (!update || !Array.isArray(update.values)) return;
+    // Signal K servers timestamp deltas. Missing/malformed timestamps cannot
+    // establish freshness; future timestamps beyond small clock skew cannot either.
+    var stamp = typeof update.timestamp === "string" ? Date.parse(update.timestamp) : NaN;
+    update.values.forEach(function (v) {
+      if (!v || !Object.prototype.hasOwnProperty.call(FIELDS, v.path)) return;
+      var field = FIELDS[v.path];
+      if (!isFinite(stamp) || stamp > now + 5000) {
+        unavailable(field);
+        return;
       }
-      if (v.value !== null || TARGET_KEYS[v.path]) {
-        applyValue(v.path, v.value);
+      if (latest[v.path] !== undefined && stamp < latest[v.path]) return;
+      latest[v.path] = stamp;
+      var isState = field[0] === "AUTOPILOT_STATE";
+      var valid = isState ? typeof v.value === "string" :
+        typeof v.value === "number" && isFinite(v.value);
+      var value = valid ? field[1](v.value) : protocol.DATA_NONE;
+      if (!valid || value < 0 || (isState && value === protocol.AP_STATE.UNKNOWN) ||
+          now - stamp >= protocol.TELEMETRY_STALE_SECONDS * 1000) {
+        unavailable(field);
+        return;
       }
-    }
-  }
+      outbox.set(field[0], value);
+      outbox.set(field[0] + "_TIME", Math.floor(stamp / 1000));
+    });
+  });
 }
 
-module.exports = {
-  subscription: subscription,
-  handleMessage: handleMessage,
-  PATHS: PATHS,
-};
+module.exports = { subscription: subscription, handleMessage: handleMessage, reset: reset, PATHS: PATHS };

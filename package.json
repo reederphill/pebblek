@@ -30,7 +30,26 @@
       "CMD_SET_STATE",
       "CMD_RESULT",
       "TARGET_HEADING",
-      "TARGET_WIND_ANGLE"
+      "TARGET_WIND_ANGLE",
+      "STW",
+      "TRUE_WIND_SPEED",
+      "TRUE_WIND_ANGLE",
+      "HEADING_TIME",
+      "AUTOPILOT_STATE_TIME",
+      "SOG_TIME",
+      "STW_TIME",
+      "WIND_SPEED_TIME",
+      "WIND_ANGLE_TIME",
+      "TRUE_WIND_SPEED_TIME",
+      "TRUE_WIND_ANGLE_TIME",
+      "TARGET_HEADING_TIME",
+      "TARGET_WIND_ANGLE_TIME",
+      "ALERT_ID",
+      "ALERT_LEVEL",
+      "ALERT_TEXT",
+      "ALERT_NOTIFY",
+      "ALERT_SYNC",
+      "ALERT_RESYNC"
     ],
     "resources": {
       "media": [
@@ -39,9 +58,33 @@
           "name": "IMAGE_MENU_ICON",
           "file": "images/menu_icon.png",
           "menuIcon": true
+        },
+        {
+          "type": "font",
+          "name": "FONT_ROBOTO_BOLD_96",
+          "targetPlatforms": ["gabbro"],
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_ROBOTO_BOLD_48",
+          "targetPlatforms": ["emery"],
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9°-]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_ROBOTO_BOLD_36",
+          "file": "fonts/Roboto-Bold.ttf",
+          "characterRegex": "[0-9.\\-]"
         }
       ]
-    }
+    },
+    "usesPermissions": [
+      "LocalNetwork",
+      "Internet"
+    ]
   },
   "dependencies": {
     "@rebble/clay": "^1.0.10"

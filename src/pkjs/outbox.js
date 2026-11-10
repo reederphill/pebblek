@@ -22,6 +22,8 @@ var FLUSH_INTERVAL_MS = 1000;
 
 function Outbox() {
   this._pending = {};      // key -> latest value waiting to be sent
+  this._events = [];       // ordered alert updates, one per AppMessage
+  this._generation = 0;
   this._inFlight = false;  // a sendAppMessage is awaiting its callback
   this._timer = null;      // scheduled flush
 }
@@ -49,7 +51,17 @@ Outbox.prototype.setAll = function (dict) {
   }
 };
 
-Outbox.prototype._schedule = function () {
+Outbox.prototype.event = function (dict) {
+  // A new watch session or server replaces the previous alert list.
+  if (dict.ALERT_SYNC === 2) {
+    this._events = [];
+    this._generation++;
+  }
+  this._events.push(dict);
+  this._schedule();
+};
+
+Outbox.prototype._schedule = function (retry) {
   if (this._inFlight || this._timer) {
     return;
   }
@@ -57,16 +69,17 @@ Outbox.prototype._schedule = function () {
   this._timer = setTimeout(function () {
     self._timer = null;
     self._flush();
-  }, FLUSH_INTERVAL_MS);
+  }, this._events.length && !retry ? 0 : FLUSH_INTERVAL_MS);
 };
 
 Outbox.prototype._flush = function () {
   if (this._inFlight) {
     return;
   }
-  var dict = this._pending;
-  var keys = Object.keys(dict);
-  if (keys.length === 0) {
+  var telemetry = this._pending;
+  var event = this._events.shift();
+  var generation = this._generation;
+  if (!event && !Object.keys(telemetry).length) {
     return;
   }
   // Take the current batch; new values that arrive during the send accumulate
@@ -74,13 +87,16 @@ Outbox.prototype._flush = function () {
   this._pending = {};
   this._inFlight = true;
 
+  var dict = {};
+  Object.keys(telemetry).forEach(function (key) { dict[key] = telemetry[key]; });
+  if (event) Object.keys(event).forEach(function (key) { dict[key] = event[key]; });
   var self = this;
   Pebble.sendAppMessage(
     dict,
     function () {
       self._inFlight = false;
       // Drain anything queued while we were sending.
-      if (Object.keys(self._pending).length > 0) {
+      if (self._events.length || Object.keys(self._pending).length) {
         self._schedule();
       }
     },
@@ -88,12 +104,13 @@ Outbox.prototype._flush = function () {
       console.log("outbox: send failed (" + (e && e.error ? e.error : e) + ") — retrying");
       self._inFlight = false;
       // Requeue the failed keys, but never clobber a newer value.
-      for (var k in dict) {
-        if (dict.hasOwnProperty(k) && !self._pending.hasOwnProperty(k)) {
-          self._pending[k] = dict[k];
+      for (var k in telemetry) {
+        if (telemetry.hasOwnProperty(k) && !self._pending.hasOwnProperty(k)) {
+          self._pending[k] = telemetry[k];
         }
       }
-      self._schedule();
+      if (event && generation === self._generation) self._events.unshift(event);
+      self._schedule(true);
     }
   );
 };
